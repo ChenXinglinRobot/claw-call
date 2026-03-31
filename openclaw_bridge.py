@@ -50,9 +50,15 @@ class OpenClawBridge:
             # -----------------------
             
             if token_data.get("code") != 0:
-                raise FeishuAuthException(f"获取 Token 失败: {token_data.get('msg')}")
+                # 注意：扁平结构下，如果 code 字段不存在或为 0，通常表示成功
+                pass 
                 
-            access_token = token_data["data"]["access_token"]
+            # ❌ 原代码：access_token = token_data["data"]["access_token"]
+            # ✅ 修改为：
+            access_token = token_data.get("access_token")
+            
+            if not access_token:
+                 raise FeishuAuthException(f"获取 Token 失败，返回内容: {token_data}")
             
             # 2. 获取用户信息
             user_info_url = "https://open.feishu.cn/open-apis/authen/v1/user_info"
@@ -60,6 +66,9 @@ class OpenClawBridge:
             user_resp = await self.http_client.get(user_info_url, headers=headers)
             user_resp.raise_for_status()
             user_data = user_resp.json()
+            # 兼容处理：有些版本有 data 字段，有些没有
+            user_info = user_data.get("data", user_data) 
+            user_identifier = user_info.get("user_id") or user_info.get("union_id")
             
             if user_data.get("code") != 0:
                 raise FeishuAuthException(f"获取用户信息失败: {user_data.get('msg')}")
