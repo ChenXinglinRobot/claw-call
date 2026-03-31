@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>飞书免登 Code 抓取器</title>
+    <script type="text/javascript" src="https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.26.js"></script>
+</head>
+<body style="font-family: sans-serif; padding: 20px;">
+    <h2>飞书免登 Code 抓取器</h2>
+    <p id="status">正在调用 tt.requestAccess...</p>
+    
+    <script>
+        window.onload = function() {
+            // 检查 SDK 是否成功加载
+            if (typeof tt === 'undefined') {
+                document.getElementById('status').innerHTML = "<span style='color:red;'>❌ 错误：tt 对象未定义。请确保在飞书开发者工具中打开此页面。</span>";
+                return;
+            }
+
+            // 发起免登请求
+            tt.requestAccess({
+                success(res) {
+                    console.log("✅ 成功！请复制下方 code:", res.code);
+                    document.getElementById('status').innerHTML = 
+                        "<span style='color:green;'>✅ 获取成功！</span><br><br>你的 Code 是：<br><b>" + res.code + "</b><br><br><i>请马上把它复制到 test_bridge.py 中（有效期 5 分钟）</i>";
+                },
+                fail(err) {
+                    console.log("❌ 获取失败:", err);
+                    document.getElementById('status').innerHTML = "<span style='color:red;'>❌ 获取失败：" + JSON.stringify(err) + "</span>";
+                }
+            });
+        };
+    </script>
+</body>
+</html>
