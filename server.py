@@ -96,6 +96,13 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             message = await websocket.receive()
 
+            # --- 新增：识别底层断开信号，防止死循环导致 RuntimeError ---
+            if message.get("type") == "websocket.disconnect":
+                print(f"[Server] 收到 WebSocket 底层断开信号 (Code: {message.get('code')})")
+                # 触发异常以跳出 while 循环，进入 except WebSocketDisconnect 处理 30 秒逻辑
+                raise WebSocketDisconnect(code=message.get("code", 1000))
+            # -------------------------------------------------------
+
             # 1. 高频拦截：处理二进制音频流 (来自前端的 16kHz PCM)
             if "bytes" in message:
                 if current_session_id and current_session_id in active_sessions:
