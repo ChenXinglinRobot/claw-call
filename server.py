@@ -8,8 +8,31 @@ from typing import Dict, Any
 from doubao_client import DoubaoClient
 from session_manager import SessionManager
 from openclaw_bridge import OpenClawBridge, FeishuAuthException
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware  # <-- 新增导入
 
 app = FastAPI()
+
+# --- 新增：严格的安全跨域策略 ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://*.cpolar.cn",       # 仅允许你自己的 cpolar 域名访问
+        "https://*.feishu.cn",       # 允许飞书官方域名
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+# ------------------------------
+
+
+# 新增：将 static 文件夹挂载到根目录
+app.mount("/app", StaticFiles(directory="static", html=True), name="static")
+
+# ... 下面的 active_sessions 和其他代码保持不变 ...
+
+
 
 # 全局字典：用于管理活跃的/挂起的会话，以实现 30 秒断线重连策略 (Phase 2.3)
 active_sessions: Dict[str, SessionManager] = {}
