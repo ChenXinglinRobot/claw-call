@@ -38,6 +38,7 @@
                 this.ctx = new (window.AudioContext || window.webkitAudioContext)();
                 this.sampleRate = sampleRate;
                 this.nextTime = 0;
+                this.sources = []; // 🆕 新增：追踪所有音频源
             }
             play(buffer) {
                 if(this.ctx.state === 'suspended') this.ctx.resume();
@@ -54,9 +55,25 @@
                 source.connect(this.ctx.destination);
 
                 // 队列式连续播放，防止爆音
-                if (this.nextTime < this.ctx.currentTime) this.nextTime = this.ctx.currentTime + 0.05;
+                const currentTime = this.ctx.currentTime;
+                if (this.nextTime < currentTime) this.nextTime = currentTime + 0.1;
                 source.start(this.nextTime);
                 this.nextTime += audioBuffer.duration;
+                
+                // 🆕 新增：将节点加入追踪，播放完毕后移除
+                this.sources.push(source);
+                source.onended = () => {
+                    const idx = this.sources.indexOf(source);
+                    if (idx > -1) this.sources.splice(idx, 1);
+                };
+            }
+            // 🆕 新增：安全的清空队列方法
+            flush() {
+                this.sources.forEach(source => {
+                    try { source.stop(); } catch(e) {}
+                });
+                this.sources = [];
+                this.nextTime = 0; // 重置时间戳，新音频立刻播放
             }
             close() { this.ctx.close(); }
         }
@@ -125,7 +142,18 @@
             ws.onmessage = (event) => {
                 if (typeof event.data === 'string') {
                     const data = JSON.parse(event.data);
-                    log(`📥 系统状态: ${data.message}`);
+                    // 🆕 拦截打断信号
+                    if (data.type === "interrupt") {
+                        if (player) player.flush();
+                        log("🛑 已打断，清空播放缓存");
+                    } 
+                    // 处理 AI 主动结束会话的特殊消息
+                    else if (data.message === "session_ended_by_ai") {
+                        log("🤖 小爪已休息，通话结束");
+                        cleanup();
+                    } else {
+                        log(`📥 系统状态: ${data.message}`);
+                    }
                 } else {
                     // 收到二进制流，直接喂给播放器
                     player.play(event.data);

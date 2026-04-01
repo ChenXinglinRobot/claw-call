@@ -23,7 +23,10 @@ class SessionManager:
         self._current_chat_text = ""
         
         # 挂起保活宽限期控制 (Phase 2.3 预留接口)
-        self.is_suspended = False 
+        self.is_suspended = False
+        
+        # AI 主动结束会话标志位（检测到用户退出意图时设为 True）
+        self.ai_ended_session = False
 
     async def start_session(self) -> None:
         """启动会话，建立连接并开启事件监听循环"""
@@ -63,8 +66,17 @@ class SessionManager:
         # 2. 拦截并处理 JSON 事件包
         if message_type == "SERVER_FULL_RESPONSE":
             
+            # --- 🆕 新增：首字打断信号 (事件 450) ---
+            if event == 450:
+                # 向音频泵队列放入打断指令，通知前端清空播放缓存
+                try:
+                    self.audio_out_queue.put_nowait({"type": "interrupt"})
+                    print("[SessionManager] 收到 450 首字信号，已下发前端打断指令")
+                except asyncio.QueueFull:
+                    pass
+            
             # --- 用户语音识别 (ASR) 流式组装 ---
-            if event == 451:  # ASRResponse
+            elif event == 451:  # ASRResponse
                 results = payload.get("results", [])
                 if results:
                     first_result = results[0]
@@ -90,6 +102,15 @@ class SessionManager:
                     self._commit_history("assistant", self._current_chat_text)
                     self._current_chat_text = ""
 
+            # --- TTSEnded 事件：检测用户退出意图 ---
+            elif event == 359:  # TTSEnded
+                status_code = payload.get("status_code", "")
+                # 使用 str() 转换防止类型对比失败（status_code 可能是整数）
+                if str(status_code) == "20000002":
+                    print("[SessionManager] 检测到用户退出意图，AI 主动结束会话")
+                    self.is_active = False
+                    self.ai_ended_session = True
+
             # --- 会话生命周期终结事件 ---
             elif event in [152, 153]:  # SessionFinished 或 SessionFailed
                 print(f"[SessionManager] 收到会话结束事件: {event}")
@@ -109,9 +130,16 @@ class SessionManager:
         print(f"[{role.upper()}] ({timestamp}): {text}")
 
     async def send_audio_upstream(self, pcm_chunk: bytes) -> None:
-        """暴露给外层 WSS：向豆包灌入前端采集的音频切片"""
+        """
+        暴露给外层 WSS：向豆包灌入前端采集的音频切片
+        ⚠️ 异常保护：捕获底层连接异常，防止豆包主动断开后 H5 继续发包导致崩溃
+        """
         if self.is_active and not self.is_suspended:
-            await self.client.send_audio(pcm_chunk)
+            try:
+                await self.client.send_audio(pcm_chunk)
+            except Exception:
+                # 静默处理：豆包可能已主动断开，避免上层崩溃
+                pass
 
     async def stop_session(self) -> None:
         """优雅销毁流程：由 FastAPI 在探测到 H5 彻底失联或主动挂断时调用"""

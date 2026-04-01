@@ -130,11 +130,18 @@ async def delayed_session_destroy(session_id: str, grace_period: int = 30):
 
 # --- 异步音频下发泵 ---
 async def pump_audio_to_h5(websocket: WebSocket, manager: SessionManager):
-    """后台任务：不断从 SessionManager 抽水（读取 TTS 音频）并浇给 H5"""
+    """
+    后台任务：不断从 SessionManager 抽水（读取 TTS 音频）并浇给 H5
+    支持混合数据：bytes 发送二进制音频，dict 发送 JSON 控制指令
+    """
     try:
         while manager.is_active:
-            pcm_chunk = await manager.audio_out_queue.get()
-            await websocket.send_bytes(pcm_chunk)
+            item = await manager.audio_out_queue.get()
+            # 混合发送：如果是 bytes 发送二进制，如果是 dict 发送 JSON 文本
+            if isinstance(item, bytes):
+                await websocket.send_bytes(item)
+            elif isinstance(item, dict):
+                await websocket.send_text(json.dumps(item))
     except Exception as e:
         print(f"[Server] 音频下发泵退出: {e}")
 
@@ -160,7 +167,37 @@ async def websocket_endpoint(websocket: WebSocket):
             if "bytes" in message:
                 if current_session_id and current_session_id in active_sessions:
                     manager = active_sessions[current_session_id]
-                    await manager.send_audio_upstream(message["bytes"])
+                    
+                    # 🆕 主动拦截 AI 结束信号
+                    if getattr(manager, 'ai_ended_session', False):
+                        print(f"[Server] 检测到 AI 主动结束，下发前端通知并销毁会话...")
+                        await websocket.send_text(json.dumps({"type": "status", "message": "session_ended_by_ai"}))
+                        
+                        # 触发正常的销毁和记忆回写流程
+                        manager = active_sessions.pop(current_session_id)
+                        await manager.stop_session()
+                        
+                        user_id = session_user_map.get(current_session_id)
+                        if user_id and manager.dialog_history:
+                            asyncio.create_task(
+                                bridge.analyze_and_save_memory(
+                                    user_identifier=user_id, 
+                                    dialog_history=manager.dialog_history
+                                )
+                            )
+                            print(f"[Server] 会话 {current_session_id} 记忆回写任务已提交，用户: {user_id}")
+                        
+                        if current_session_id in session_user_map:
+                            del session_user_map[current_session_id]
+                        
+                        break  # 退出 while 循环，主动关闭 WebSocket 连接
+                    
+                    # 原有的音频转发逻辑
+                    try:
+                        await manager.send_audio_upstream(message["bytes"])
+                    except Exception:
+                        # 双保险：静默忽略，豆包可能已主动断开
+                        pass
                 continue
 
             # 2. 低频拦截：处理 JSON 控制状态机指令

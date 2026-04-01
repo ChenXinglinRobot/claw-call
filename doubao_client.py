@@ -77,6 +77,7 @@ class DoubaoClient:
         """
         发送音频流 (TaskRequest - 200)
         ⚠️ 核心优化：遵照官方文档推荐，音频纯二进制数据不进行 GZIP 压缩，降低 CPU 开销与延迟。
+        ⚠️ 异常保护：捕获连接关闭异常，防止豆包主动断开时导致上层崩溃。
         """
         if not self.ws or self.ws.closed:
             return
@@ -96,7 +97,11 @@ class DoubaoClient:
         req.extend(len(pcm_data).to_bytes(4, 'big'))
         req.extend(pcm_data)
         
-        await self.ws.send(req)
+        try:
+            await self.ws.send(req)
+        except websockets.exceptions.ConnectionClosed:
+            # 豆包主动断开连接，静默丢弃音频包，避免上层崩溃
+            print("[DoubaoClient] 音频发送失败：连接已关闭")
 
     async def send_client_interrupt(self) -> None:
         """发送打断指令 (ClientInterrupt - 515) - 应对 H5 前端的主动麦克风介入"""
