@@ -46,7 +46,7 @@ class OpenClawBridge:
             token_resp.raise_for_status()
             token_data = token_resp.json()
             # --- 新增这一行调试日志 ---
-            print(f"DEBUG: 飞书 Token 接口返回: {token_data}") #做一个小标记调试
+            #print(f"DEBUG: 飞书 Token 接口返回: {token_data}") #做一个小标记调试#  ✅ 已完成 成功
             # -----------------------
             
             if token_data.get("code") != 0:

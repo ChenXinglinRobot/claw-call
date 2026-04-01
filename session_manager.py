@@ -28,6 +28,9 @@ class SessionManager:
     async def start_session(self) -> None:
         """启动会话，建立连接并开启事件监听循环"""
         self.is_active = True
+        # --- 新增：手动插入一条测试记录 ---
+        # self._commit_history("assistant", "系统已连接，正在监听静音帧测试...")#标记ws_client.py的测试#  ✅ 已完成 成功
+        # ------------------------------
         await self.client.connect()
         
         # 启动后台守护任务，持续拉取豆包下发的数据包

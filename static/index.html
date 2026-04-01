@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小爪语音学习助手 - 测试端</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; text-align: center; }
+        button { padding: 10px 20px; font-size: 16px; margin: 10px; cursor: pointer; }
+        #log { margin-top: 20px; text-align: left; background: #f4f4f4; padding: 10px; height: 300px; overflow-y: auto; }
+        .status-disconnected { color: red; font-weight: bold; }
+        .status-connected { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h2>🎙️ 语音连通性测试台</h2>
+    <p>状态: <span id="ws-status" class="status-disconnected">未连接</span></p>
+    
+    <button id="btn-start" onclick="startSession()">▶️ 开始学习 (模拟飞书免登)</button>
+    <button id="btn-mute" onclick="toggleMute()" disabled>🔇 麦克风静音</button>
+    <button id="btn-stop" onclick="finishSession()" disabled>⏹️ 结束通话</button>
+
+    <div id="log"></div>
+
+    <script>
+        let ws = null;
+        let isMuted = false;
+        
+        // 动态获取 WebSocket 地址 (兼容本地和内网穿透)
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/session`;
+
+        function log(msg) {
+            const div = document.getElementById('log');
+            div.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            div.scrollTop = div.scrollHeight;
+        }
+
+        function updateButtons(connected) {
+            document.getElementById('btn-start').disabled = connected;
+            document.getElementById('btn-stop').disabled = !connected;
+            document.getElementById('btn-mute').disabled = !connected;
+            
+            const statusEl = document.getElementById('ws-status');
+            statusEl.textContent = connected ? "已连接豆包" : "未连接";
+            statusEl.className = connected ? "status-connected" : "status-disconnected";
+        }
+
+        function startSession() {
+            log("正在连接后端基站...");
+            ws = new WebSocket(wsUrl);
+            ws.binaryType = 'arraybuffer'; // 接收二进制音频流
+
+            ws.onopen = () => {
+                log("✅ WebSocket 连接成功！正在发送身份鉴权...");
+                // 模拟发送 start_session 指令
+                const startCmd = {
+                    type: "start_session",
+                    session_id: "test_session_" + Date.now(),
+                    token: "mock_feishu_code_123" // 如果你用了后端跳过鉴权的方案，这个 code 会被放行
+                };
+                ws.send(JSON.stringify(startCmd));
+                updateButtons(true);
+            };
+
+            ws.onmessage = (event) => {
+                if (typeof event.data === 'string') {
+                    // 处理后端下发的 JSON 控制信息
+                    const data = JSON.parse(event.data);
+                    log(`📥 收到服务器消息: ${data.type} - ${data.message || ''}`);
+                } else {
+                    // 处理后端下发的 二进制音频流 (24000Hz PCM)
+                    // 注：此处为测试连通性，暂不写复杂的 Web Audio API 硬解播放逻辑
+                    log(`🎵 收到豆包下发的音频数据包，大小: ${event.data.byteLength} 字节`);
+                }
+            };
+
+            ws.onclose = () => {
+                log("❌ WebSocket 连接已断开。");
+                updateButtons(false);
+                ws = null;
+            };
+
+            ws.onerror = (error) => {
+                log("⚠️ WebSocket 发生错误！");
+            };
+        }
+
+        function toggleMute() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            isMuted = !isMuted;
+            const muteCmd = {
+                type: "mic_status",
+                muted: isMuted
+            };
+            ws.send(JSON.stringify(muteCmd));
+            log(`已${isMuted ? '开启' : '关闭'}静音状态`);
+            document.getElementById('btn-mute').textContent = isMuted ? "🔊 恢复麦克风" : "🔇 麦克风静音";
+        }
+
+        function finishSession() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            log("正在发送优雅结束指令...");
+            const finishCmd = { type: "finish_session" };
+            ws.send(JSON.stringify(finishCmd));
+            
+            // 稍等片刻后前端主动断开
+            setTimeout(() => {
+                ws.close();
+            }, 500);
+        }
+    </script>
+</body>
+</html>
