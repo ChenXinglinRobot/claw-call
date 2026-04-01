@@ -110,7 +110,7 @@ class OpenClawBridge:
                     "format": "pcm_s16le",
                     "sample_rate": 24000
                 },
-                "speaker": "zh_female_vv_jupiter_bigtts" 
+                "speaker": "zh_female_xiaohe_jupiter_bigtts" 
             },
             "dialog": {
                 "bot_name": "小爪",
