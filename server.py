@@ -1,8 +1,12 @@
 import asyncio
 import json
 import os
+from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import Dict, Any
+
+# 加载 .env 环境变量
+load_dotenv()
 
 # 导入我们前两步写好的核心类
 from doubao_client import DoubaoClient
@@ -10,6 +14,21 @@ from session_manager import SessionManager
 from openclaw_bridge import OpenClawBridge, FeishuAuthException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware  # <-- 新增导入
+
+# ============ 全局配置常量（从环境变量加载）============
+# 火山引擎豆包 API 配置
+DOUBAO_APP_ID = os.getenv("DOUBAO_APP_ID", "")
+DOUBAO_ACCESS_KEY = os.getenv("DOUBAO_ACCESS_KEY", "")
+DOUBAO_RESOURCE_ID = os.getenv("DOUBAO_RESOURCE_ID", "volc.speech.dialog")
+DOUBAO_APP_KEY = os.getenv("DOUBAO_APP_KEY", "")
+DOUBAO_WSS_URL = os.getenv("DOUBAO_WSS_URL", "wss://openspeech.bytedance.com/api/v3/realtime/dialogue")
+
+# 飞书应用配置
+FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
+FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
+
+# 记忆文件存储目录
+MEMORY_DIR = os.getenv("MEMORY_DIR", "memory")
 
 app = FastAPI()
 
@@ -52,11 +71,22 @@ async def startup_event():
     """
     global bridge
     bridge = OpenClawBridge(
-        feishu_app_id=os.getenv("FEISHU_APP_ID", "cli_a9415e51f878dcc8"),
-        feishu_app_secret=os.getenv("FEISHU_APP_SECRET", "lo49jyG8JmVNR9zUOyA9TckwYlKkM4tN"),
-        memory_dir=os.getenv("MEMORY_DIR", "memory")
+        feishu_app_id=FEISHU_APP_ID,
+        feishu_app_secret=FEISHU_APP_SECRET,
+        memory_dir=MEMORY_DIR
     )
     print("[Server] OpenClawBridge 初始化完成，HTTP 连接池已就绪。")
+
+
+@app.get("/api/config")
+async def get_frontend_config():
+    """
+    为前端提供动态配置（如飞书 appId）
+    避免前端硬编码敏感配置
+    """
+    return {
+        "feishu_app_id": FEISHU_APP_ID
+    }
 
 
 @app.on_event("shutdown")
@@ -169,18 +199,12 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.close()
                         continue
                     
-                    # 豆包 WebSocket 连接配置
-                    DOUBAO_WSS_URL = "wss://openspeech.bytedance.com/api/v3/realtime/dialogue"
-
+                    # 豆包 WebSocket 连接配置（从环境变量加载）
                     HEADERS = {
-                        # 你的火山引擎 APP ID
-                        "X-Api-App-ID": "7531564354",
-                        # 你的火山引擎 Access Token (不是 Bearer 格式，直接填字符串)
-                        "X-Api-Access-Key": "bVv3KAJ4Zd3v-aCSBW8CV_bX7RgPwq9S",
-                        # 固定值，表示调用语音对话资源
-                        "X-Api-Resource-Id": "volc.speech.dialog",
-                        # 固定值，请原封不动复制这个字符串
-                        "X-Api-App-Key": "PlgvMymc7f3tQnJ6"
+                        "X-Api-App-ID": DOUBAO_APP_ID,
+                        "X-Api-Access-Key": DOUBAO_ACCESS_KEY,
+                        "X-Api-Resource-Id": DOUBAO_RESOURCE_ID,
+                        "X-Api-App-Key": DOUBAO_APP_KEY
                     }
                     
                     client = DoubaoClient(DOUBAO_WSS_URL, HEADERS, current_session_id, config)

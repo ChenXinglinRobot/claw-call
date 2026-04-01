@@ -1,0 +1,25 @@
+# 环境变量文件（包含敏感信息，禁止提交）
+.env
+
+# Python 字节码缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python 虚拟环境
+.venv/
+venv/
+ENV/
+
+# IDE 配置文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 记忆文件目录（运行时生成）
+memory/
+
+# 测试文件
+*.pyc
+.pytest_cache/

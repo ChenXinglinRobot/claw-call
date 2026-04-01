@@ -36,8 +36,7 @@ class OpenClawBridge:
             "grant_type": "authorization_code",
             "client_id": self.app_id,
             "client_secret": self.app_secret,
-            "code": code,
-            "redirect_uri": "https://www.baidu.com"#做一个小标记，重定向
+            "code": code
         }
         
         try:
