@@ -1,6 +1,9 @@
 # 环境变量文件（包含敏感信息，禁止提交）
 .env
 
+# 动态提示词配置文件（由外部 Agent 修改，运行时生成）
+prompt_config.json
+
 # Python 字节码缓存
 __pycache__/
 *.py[cod]

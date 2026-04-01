@@ -1,0 +1,19 @@
+{
+    "tts": {
+        "audio_config": {
+            "channel": 1,
+            "format": "pcm_s16le",
+            "sample_rate": 24000
+        },
+        "speaker": "zh_female_xiaohe_jupiter_bigtts"
+    },
+    "dialog": {
+        "bot_name": "小爪",
+        "system_role": "你是小爪，一个耐心且专业的英语学习助手。请根据以下用户的专属学习计划和历史记忆引导其背单词：",
+        "speaking_style": "温柔耐心，像朋友一样聊天，语速适中",
+        "extra": {
+            "input_mod": "keep_alive",
+            "model": "1.2.1.1"
+        }
+    }
+}
