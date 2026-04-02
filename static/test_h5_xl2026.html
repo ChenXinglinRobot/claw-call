@@ -166,7 +166,13 @@
 
             ws.onopen = () => {
                 log("✅ WebSocket 已连接！发送 Start 配置...");
-                ws.send(JSON.stringify({ type: "start_session", session_id: "test_session_" + Date.now(), token: token }));
+                // 🆕 优先从缓存获取 session_id，支持断线重连
+                let sessionId = sessionStorage.getItem('doubao_session_id');
+                if (!sessionId) {
+                    sessionId = "test_session_" + Date.now();
+                    sessionStorage.setItem('doubao_session_id', sessionId);
+                }
+                ws.send(JSON.stringify({ type: "start_session", session_id: sessionId, token: token }));
                 updateButtons(true);
                 startRecordingAndSending();
             };
@@ -182,6 +188,8 @@
                     // 处理 AI 主动结束会话的特殊消息
                     else if (data.message === "session_ended_by_ai") {
                         log("🤖 小爪已休息，通话结束");
+                        // 🆕 AI 主动挂断，清理 session_id 缓存
+                        sessionStorage.removeItem('doubao_session_id');
                         cleanup();
                     } else {
                         log(`📥 系统状态: ${data.message}`);
@@ -233,6 +241,9 @@
         }
 
         function finishSession() {
+            // 🆕 用户主动挂断，清理 session_id 缓存
+            sessionStorage.removeItem('doubao_session_id');
+            
             if (ws && ws.readyState === WebSocket.OPEN) {
                 log("正在发送优雅结束指令...");
                 ws.send(JSON.stringify({ type: "finish_session" }));
