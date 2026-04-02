@@ -12,6 +12,8 @@
         #btn-start:disabled { background-color: #cccccc; }
         #btn-stop { background-color: #f44336; color: white; }
         #btn-stop:disabled { background-color: #cccccc; }
+        #btn-mute { background-color: #4CAF50; color: white; }
+        #btn-mute:disabled { background-color: #cccccc; }
         #log { margin-top: 20px; text-align: left; background: #fff; border: 1px solid #ddd; padding: 15px; height: 350px; overflow-y: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 14px; }
         .status-disconnected { color: red; font-weight: bold; }
         .status-connected { color: green; font-weight: bold; }
@@ -22,6 +24,7 @@
     <p>状态: <span id="ws-status" class="status-disconnected">未连接</span></p>
     
     <button id="btn-start" onclick="startSession()">▶️ 开始学习</button>
+    <button id="btn-mute" onclick="toggleMute()" disabled>🎤 收音中</button>
     <button id="btn-stop" onclick="finishSession()" disabled>⏹️ 结束通话</button>
 
     <div id="log"></div>
@@ -31,6 +34,7 @@
         let audioContext = null;
         let mediaStream = null;
         let processor = null;
+        let isMuted = false;  // 麦克风静音状态
         
         // ===== 下行播放器 (24kHz 连续播放) =====
         class PCMPlayer {
@@ -91,9 +95,37 @@
         function updateButtons(connected) {
             document.getElementById('btn-start').disabled = connected;
             document.getElementById('btn-stop').disabled = !connected;
+            document.getElementById('btn-mute').disabled = !connected;
             const statusEl = document.getElementById('ws-status');
             statusEl.textContent = connected ? "通话中 🎙️" : "未连接";
             statusEl.className = connected ? "status-connected" : "status-disconnected";
+        }
+
+        // 切换麦克风静音状态
+        function toggleMute() {
+            isMuted = !isMuted;
+            
+            // 🔒 硬件级隐私控制：同步切换麦克风轨道启用状态
+            if (mediaStream) {
+                const audioTrack = mediaStream.getAudioTracks()[0];
+                if (audioTrack) audioTrack.enabled = !isMuted;
+            }
+            
+            // 更新按钮 UI
+            const btn = document.getElementById('btn-mute');
+            if (isMuted) {
+                btn.textContent = '🔇 已静音';
+                btn.style.backgroundColor = '#f44336';
+            } else {
+                btn.textContent = '🎤 收音中';
+                btn.style.backgroundColor = '#4CAF50';
+            }
+            
+            // 🛡️ WebSocket 状态安全检查后再发送
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "mic_status", muted: isMuted }));
+                log(isMuted ? "🔇 麦克风已静音" : "🎤 麦克风已恢复收音");
+            }
         }
 
         // ===== 核心启动逻辑 =====
@@ -178,6 +210,7 @@
 
             processor.onaudioprocess = (e) => {
                 if (!ws || ws.readyState !== WebSocket.OPEN) return;
+                if (isMuted) return;  // 静音时不发送音频数据
                 
                 const inputData = e.inputBuffer.getChannelData(0);
                 
@@ -210,6 +243,13 @@
 
         function cleanup() {
             updateButtons(false);
+            
+            // 重置静音状态和 UI
+            isMuted = false;
+            const btnMute = document.getElementById('btn-mute');
+            btnMute.textContent = '🎤 收音中';
+            btnMute.style.backgroundColor = '#4CAF50';
+            
             if (processor) { processor.disconnect(); processor = null; }
             if (audioContext) { audioContext.close(); audioContext = null; }
             if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
