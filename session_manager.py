@@ -7,8 +7,11 @@ class SessionManager:
     """
     单次通话生命周期与流式状态机 (Phase 2.2)
     负责拦截豆包底层事件，处理流式文本组装，隔离 H5 的音频输入输出。
+    
+    V2.1 新增：状态快照机制
+    - project_snapshot: 锁定本次通话所属的项目名称，确保记忆回写不因并发修改而错位
     """
-    def __init__(self, doubao_client: DoubaoClient):
+    def __init__(self, doubao_client: DoubaoClient, project_snapshot: str = None):
         self.client = doubao_client
         self.is_active = False
         
@@ -27,6 +30,10 @@ class SessionManager:
         
         # AI 主动结束会话标志位（检测到用户退出意图时设为 True）
         self.ai_ended_session = False
+        
+        # 🆕 V2.1: 状态快照 - 锁定本次通话的项目名称（不可变）
+        # 在会话创建时捕获，确保记忆回写时路径一致，避免并发错位
+        self.project_snapshot = project_snapshot
 
     async def start_session(self) -> None:
         """启动会话，建立连接并开启事件监听循环"""
@@ -56,6 +63,17 @@ class SessionManager:
         message_type = response.get("message_type")
         event = response.get("event")
         payload = response.get("payload_msg", {})
+
+        # 只拦截并打印异常、错误事件或底层错误帧（避免刷屏）
+        # event 51: ConnectionFailed, 153: SessionFailed, 599: DialogCommonError
+        if event in [51, 153, 599] or message_type == "CONNECTION_CLOSED":
+            print(f"[SessionManager] ❌ 发生错误或异常中断: message_type={message_type}, event={event}, payload={payload}")
+        # 底层错误帧兜底拦截（payload 为 dict 且包含 error 字段）
+        elif isinstance(payload, dict) and "error" in payload:
+            print(f"[SessionManager] ❌ 底层错误帧: message_type={message_type}, event={event}, payload={payload}")
+        # 二进制协议级错误帧（SERVER_ERROR_RESPONSE，此时 message_type 未设置，但有 code 字段）
+        elif "code" in response and message_type is None:
+            print(f"[SessionManager] ❌ 二进制协议错误帧: code={response.get('code')}, payload={payload}")
 
         # 1. 拦截二进制音频流 (TTS)
         if message_type == "SERVER_ACK" and isinstance(payload, bytes):

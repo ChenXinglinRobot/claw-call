@@ -111,15 +111,17 @@ async def delayed_session_destroy(session_id: str, grace_period: int = 30):
         await manager.stop_session()
         
         # 异步执行记忆回写，防止阻塞主循环
+        # 🆕 V2.1: 使用状态快照进行记忆回写
         user_id = session_user_map.get(session_id)
         if user_id and manager.dialog_history:
             asyncio.create_task(
                 bridge.analyze_and_save_memory(
                     user_identifier=user_id,
-                    dialog_history=manager.dialog_history
+                    dialog_history=manager.dialog_history,
+                    project_snapshot=manager.project_snapshot
                 )
             )
-            print(f"[Server] 会话 {session_id} 记忆回写任务已提交，用户: {user_id}")
+            print(f"[Server] 会话 {session_id} 记忆回写任务已提交，用户: {user_id}, 快照: {manager.project_snapshot}")
         
         # 清理用户映射
         if session_id in session_user_map:
@@ -177,15 +179,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         manager = active_sessions.pop(current_session_id)
                         await manager.stop_session()
                         
+                        # 🆕 V2.1: 使用状态快照进行记忆回写
                         user_id = session_user_map.get(current_session_id)
                         if user_id and manager.dialog_history:
                             asyncio.create_task(
                                 bridge.analyze_and_save_memory(
                                     user_identifier=user_id, 
-                                    dialog_history=manager.dialog_history
+                                    dialog_history=manager.dialog_history,
+                                    project_snapshot=manager.project_snapshot
                                 )
                             )
-                            print(f"[Server] 会话 {current_session_id} 记忆回写任务已提交，用户: {user_id}")
+                            print(f"[Server] 会话 {current_session_id} 记忆回写任务已提交，用户: {user_id}, 快照: {manager.project_snapshot}")
                         
                         if current_session_id in session_user_map:
                             del session_user_map[current_session_id]
@@ -228,7 +232,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         # 将 user_id 绑定到当前会话，以便后续记忆回写使用
                         session_user_map[current_session_id] = user_id
                         # 根据用户身份生成豆包会话配置（含历史记忆）
-                        config = await bridge.generate_doubao_config(user_identifier=user_id)
+                        # 🆕 V2.1: 返回元组 (config, project_snapshot)
+                        config, project_snapshot = await bridge.generate_doubao_config(user_identifier=user_id)
+                        print(f"[Server] 会话 {current_session_id} 状态快照: {project_snapshot}")
                     except FeishuAuthException as e:
                         # 鉴权失败，返回错误并关闭连接
                         print(f"[Server] 飞书鉴权失败: {e}")
@@ -245,7 +251,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
                     
                     client = DoubaoClient(DOUBAO_WSS_URL, HEADERS, current_session_id, config)
-                    manager = SessionManager(client)
+                    # 🆕 V2.1: 传入 project_snapshot 到 SessionManager
+                    manager = SessionManager(client, project_snapshot=project_snapshot)
                     active_sessions[current_session_id] = manager
                     
                     await manager.start_session()
@@ -267,15 +274,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         await manager.stop_session()
                         
                         # 异步执行记忆回写，防止阻塞 WebSocket 主循环
+                        # 🆕 V2.1: 使用状态快照进行记忆回写
                         user_id = session_user_map.get(current_session_id)
                         if user_id and manager.dialog_history:
                             asyncio.create_task(
                                 bridge.analyze_and_save_memory(
                                     user_identifier=user_id,
-                                    dialog_history=manager.dialog_history
+                                    dialog_history=manager.dialog_history,
+                                    project_snapshot=manager.project_snapshot
                                 )
                             )
-                            print(f"[Server] 会话 {current_session_id} 记忆回写任务已提交，用户: {user_id}")
+                            print(f"[Server] 会话 {current_session_id} 记忆回写任务已提交，用户: {user_id}, 快照: {manager.project_snapshot}")
                         
                         # 清理用户映射
                         if current_session_id in session_user_map:
