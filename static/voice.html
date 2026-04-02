@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>语音学习助手</title>
+    <!-- 飞书 JSSDK (v1.5.44) -->
+    <script type="text/javascript" src="https://lf-scm-cn.feishucdn.com/lark/op/h5-js-sdk-1.5.44.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app" data-state="idle">
+        <!-- 弥散光球背景 -->
+        <div class="ambient-background">
+            <div class="glow-orb orb-1"></div>
+            <div class="glow-orb orb-2"></div>
+        </div>
+
+        <!-- 顶部栏 -->
+        <header class="top-bar">
+            <button id="btn-toggle-log" class="ghost-btn" aria-label="查看日志">
+                <span class="icon-dots">•••</span>
+            </button>
+            <div id="toast-container" class="hidden"></div>
+        </header>
+
+        <!-- 主显示区 -->
+        <main class="center-display">
+            <div class="welcome-text-container">
+                <h1 id="welcome-text"></h1>
+            </div>
+            <div class="call-timer-container">
+                <h2 id="call-timer">00:00</h2>
+            </div>
+        </main>
+
+        <!-- 底部操作区 -->
+        <footer class="control-panel">
+            <button id="btn-dial" class="action-btn btn-green" aria-label="拨号">
+                <span class="icon-phone">📞</span>
+            </button>
+            <div class="active-controls">
+                <button id="btn-mute" class="action-btn btn-glass" aria-label="静音">
+                    <span class="icon-mic">🎤</span>
+                </button>
+                <button id="btn-hangup" class="action-btn btn-red" aria-label="挂断">
+                    <span class="icon-phone-down">挂断</span>
+                </button>
+            </div>
+        </footer>
+
+        <!-- 日志抽屉 -->
+        <aside id="log-drawer" class="glass-drawer">
+            <div class="drawer-header">
+                <h3>对话记录</h3>
+                <button id="btn-close-log" class="ghost-btn-text">收起</button>
+            </div>
+            <div id="log-content" class="drawer-body">
+                <p>暂无对话记录...</p>
+            </div>
+        </aside>
+    </div>
+
+    <script src="voice.js"></script>
+</body>
+</html>

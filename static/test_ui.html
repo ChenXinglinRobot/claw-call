@@ -1,0 +1,612 @@
+<!--
+  UI 测试页面 - 用于测试状态机动画、光球变化、计时器和震动反馈
+  访问地址: http://localhost:8000/app/test_ui.html
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>UI 测试 - 语音学习助手</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* 测试控制面板样式 */
+        .test-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            max-width: 280px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .test-panel h4 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 8px;
+        }
+        .test-panel .section {
+            margin-bottom: 12px;
+        }
+        .test-panel .section-title {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 6px;
+        }
+        .test-panel button {
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: #fff;
+            padding: 8px 12px;
+            margin: 2px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .test-panel button:hover {
+            background: rgba(255,255,255,0.25);
+        }
+        .test-panel button:active {
+            transform: scale(0.95);
+        }
+        .test-panel button.active {
+            background: #34C759;
+            border-color: #34C759;
+        }
+        .test-panel button.danger {
+            background: #FF3B30;
+            border-color: #FF3B30;
+        }
+        .test-panel .status-display {
+            background: rgba(255,255,255,0.1);
+            padding: 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+        .test-panel .state-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .state-idle { background: #888; }
+        .state-connecting { background: #FFD60A; animation: blink 0.5s infinite; }
+        .state-active { background: #34C759; }
+        
+        /* 震动模拟视觉效果 */
+        .vibrate-feedback {
+            animation: vibrate 0.3s ease-out;
+        }
+        @keyframes vibrate {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-4px); }
+            40% { transform: translateX(4px); }
+            60% { transform: translateX(-3px); }
+            80% { transform: translateX(3px); }
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        
+        /* 自动演示进度条 */
+        .demo-progress {
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        .demo-progress-bar {
+            height: 100%;
+            background: #34C759;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" data-state="idle">
+        <div class="ambient-background">
+            <div class="glow-orb orb-1"></div>
+            <div class="glow-orb orb-2"></div>
+        </div>
+
+        <header class="top-bar">
+            <button id="btn-toggle-log" class="ghost-btn" aria-label="查看日志">
+                <span class="icon-dots">•••</span>
+            </button>
+            <div id="toast-container" class="hidden"></div>
+        </header>
+
+        <main class="center-display">
+            <div class="welcome-text-container">
+                <h1 id="welcome-text"></h1>
+            </div>
+            <div class="call-timer-container">
+                <h2 id="call-timer">00:00</h2>
+            </div>
+        </main>
+
+        <footer class="control-panel">
+            <button id="btn-dial" class="action-btn btn-green" aria-label="拨号">
+                <span class="icon-phone">📞</span>
+            </button>
+            <div class="active-controls">
+                <button id="btn-mute" class="action-btn btn-glass" aria-label="静音">
+                    <span class="icon-mic">🎤</span>
+                </button>
+                <button id="btn-hangup" class="action-btn btn-red" aria-label="挂断">
+                    <span class="icon-phone-down">挂断</span>
+                </button>
+            </div>
+        </footer>
+
+        <aside id="log-drawer" class="glass-drawer">
+            <div class="drawer-header">
+                <h3>对话记录</h3>
+                <button id="btn-close-log" class="ghost-btn-text">收起</button>
+            </div>
+            <div id="log-content" class="drawer-body">
+                <p>暂无对话记录...</p>
+            </div>
+        </aside>
+    </div>
+
+    <!-- 测试控制面板 -->
+    <div class="test-panel">
+        <h4>🧪 UI 测试面板</h4>
+        
+        <div class="section">
+            <div class="section-title">状态控制</div>
+            <button onclick="setState('idle')">Idle</button>
+            <button onclick="setState('connecting')">Connecting</button>
+            <button onclick="setState('active')">Active</button>
+            <div class="status-display">
+                当前状态: <span id="current-state"><span class="state-indicator state-idle"></span>idle</span>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">自动演示</div>
+            <button id="btn-auto-demo" onclick="toggleAutoDemo()">▶ 开始演示</button>
+            <div class="demo-progress">
+                <div id="demo-progress-bar" class="demo-progress-bar"></div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">计时器测试</div>
+            <button onclick="startTimer()">▶ 开始</button>
+            <button onclick="pauseTimer()">⏸ 暂停</button>
+            <button onclick="resetTimer()">↺ 重置</button>
+            <div class="status-display">
+                计时: <span id="timer-display">00:00</span>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">欢迎语动画</div>
+            <button onclick="showWelcome('你好，欢迎回来！')">显示欢迎语</button>
+            <button onclick="showWelcome('今天想学点什么呢？')">切换文字</button>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">震动反馈</div>
+            <button onclick="triggerVibrate('short')">短震动</button>
+            <button onclick="triggerVibrate('long')">长震动</button>
+            <div class="status-display">
+                支持状态: <span id="vibrate-support">检测中...</span>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">日志抽屉</div>
+            <button onclick="toggleDrawer()">切换抽屉</button>
+            <button onclick="addLog()">添加日志</button>
+        </div>
+    </div>
+
+    <script>
+    /**
+     * UI 测试脚本
+     * 用于测试状态机、光球、计时器和震动反馈
+     */
+    
+    // ============ 状态机管理 ============
+    let currentState = 'idle';
+    
+    /**
+     * 设置应用状态
+     * @param {string} state - 目标状态 (idle/connecting/active)
+     */
+    function setState(state) {
+        const app = document.getElementById('app');
+        const stateDisplay = document.getElementById('current-state');
+        
+        // 更新 data-state 属性
+        app.setAttribute('data-state', state);
+        currentState = state;
+        
+        // 更新状态指示器
+        const indicatorClass = `state-indicator state-${state}`;
+        stateDisplay.innerHTML = `<span class="${indicatorClass}"></span>${state}`;
+        
+        // 状态相关逻辑
+        if (state === 'active') {
+            startTimer();
+            triggerVibrate('short');
+        } else if (state === 'idle') {
+            resetTimer();
+        }
+        
+        console.log(`[状态切换] -> ${state}`);
+    }
+    
+    /**
+     * 模拟拨号流程: idle -> connecting -> active
+     */
+    function simulateDial() {
+        if (currentState !== 'idle') return;
+        
+        setState('connecting');
+        
+        // 2秒后自动切换到 active
+        setTimeout(() => {
+            if (currentState === 'connecting') {
+                setState('active');
+            }
+        }, 2000);
+    }
+    
+    /**
+     * 模拟挂断: active -> idle
+     */
+    function simulateHangup() {
+        setState('idle');
+        triggerVibrate('long');
+    }
+    
+    // ============ 计时器管理 ============
+    let timerSeconds = 0;
+    let timerInterval = null;
+    let timerRunning = false;
+    
+    /**
+     * 格式化时间显示
+     * @param {number} seconds - 秒数
+     * @returns {string} 格式化的时间字符串
+     */
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    
+    /**
+     * 更新计时器显示
+     */
+    function updateTimerDisplay() {
+        const timerEl = document.getElementById('call-timer');
+        const testDisplay = document.getElementById('timer-display');
+        const timeStr = formatTime(timerSeconds);
+        timerEl.textContent = timeStr;
+        testDisplay.textContent = timeStr;
+    }
+    
+    /**
+     * 启动计时器
+     */
+    function startTimer() {
+        if (timerRunning) return;
+        timerRunning = true;
+        
+        timerInterval = setInterval(() => {
+            timerSeconds++;
+            updateTimerDisplay();
+        }, 1000);
+        
+        console.log('[计时器] 已启动');
+    }
+    
+    /**
+     * 暂停计时器
+     */
+    function pauseTimer() {
+        if (!timerRunning) return;
+        timerRunning = false;
+        
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        
+        console.log('[计时器] 已暂停');
+    }
+    
+    /**
+     * 重置计时器
+     */
+    function resetTimer() {
+        pauseTimer();
+        timerSeconds = 0;
+        updateTimerDisplay();
+        console.log('[计时器] 已重置');
+    }
+    
+    // ============ 欢迎语动画 ============
+    const welcomeTexts = [
+        '你好，欢迎回来！',
+        '今天想学点什么呢？',
+        '让我们一起进步吧！',
+        '准备好了吗？'
+    ];
+    let welcomeIndex = 0;
+    
+    /**
+     * 显示欢迎语（带淡入淡出动画）
+     * @param {string} text - 要显示的文字
+     */
+    function showWelcome(text) {
+        const welcomeEl = document.getElementById('welcome-text');
+        
+        // 设置动画
+        welcomeEl.style.animation = 'none';
+        welcomeEl.offsetHeight; // 触发重排
+        welcomeEl.textContent = text;
+        welcomeEl.style.animation = 'fadeInOut 4s ease-in-out forwards';
+    }
+    
+    /**
+     * 循环显示欢迎语
+     */
+    function cycleWelcome() {
+        showWelcome(welcomeTexts[welcomeIndex]);
+        welcomeIndex = (welcomeIndex + 1) % welcomeTexts.length;
+    }
+    
+    // ============ 震动反馈 ============
+    let vibrateSupported = false;
+    
+    /**
+     * 检测震动支持
+     */
+    function checkVibrateSupport() {
+        const supportEl = document.getElementById('vibrate-support');
+        
+        // 检测标准 Vibration API
+        if ('vibrate' in navigator) {
+            vibrateSupported = true;
+            supportEl.textContent = '✅ 支持 (原生)';
+            return;
+        }
+        
+        // 检测飞书环境
+        if (typeof tt !== 'undefined' && tt.vibrateShort) {
+            vibrateSupported = true;
+            supportEl.textContent = '✅ 支持 (飞书)';
+            return;
+        }
+        
+        supportEl.textContent = '⚠️ 不支持 (使用视觉模拟)';
+    }
+    
+    /**
+     * 触发震动反馈
+     * @param {string} type - 震动类型 (short/long)
+     */
+    function triggerVibrate(type) {
+        const duration = type === 'long' ? 400 : 100;
+        
+        // 尝试原生 Vibration API
+        if ('vibrate' in navigator) {
+            navigator.vibrate(duration);
+            console.log(`[震动] 原生 API: ${duration}ms`);
+            return;
+        }
+        
+        // 尝试飞书 API
+        if (typeof tt !== 'undefined') {
+            if (type === 'long') {
+                tt.vibrateLong && tt.vibrateLong();
+            } else {
+                tt.vibrateShort && tt.vibrateShort();
+            }
+            console.log(`[震动] 飞书 API: ${type}`);
+            return;
+        }
+        
+        // 降级到视觉反馈
+        visualVibrate();
+        console.log(`[震动] 视觉模拟: ${type}`);
+    }
+    
+    /**
+     * 视觉震动模拟（桌面端降级方案）
+     */
+    function visualVibrate() {
+        const app = document.getElementById('app');
+        app.classList.add('vibrate-feedback');
+        setTimeout(() => {
+            app.classList.remove('vibrate-feedback');
+        }, 300);
+    }
+    
+    // ============ 自动演示模式 ============
+    let autoDemoRunning = false;
+    let autoDemoTimeout = null;
+    
+    /**
+     * 切换自动演示模式
+     */
+    function toggleAutoDemo() {
+        const btn = document.getElementById('btn-auto-demo');
+        
+        if (autoDemoRunning) {
+            stopAutoDemo();
+            btn.textContent = '▶ 开始演示';
+            btn.classList.remove('active');
+        } else {
+            startAutoDemo();
+            btn.textContent = '⏹ 停止演示';
+            btn.classList.add('active');
+        }
+    }
+    
+    /**
+     * 启动自动演示
+     */
+    function startAutoDemo() {
+        autoDemoRunning = true;
+        runDemoCycle();
+    }
+    
+    /**
+     * 停止自动演示
+     */
+    function stopAutoDemo() {
+        autoDemoRunning = false;
+        if (autoDemoTimeout) {
+            clearTimeout(autoDemoTimeout);
+            autoDemoTimeout = null;
+        }
+        setState('idle');
+        resetTimer();
+    }
+    
+    /**
+     * 执行演示循环
+     */
+    function runDemoCycle() {
+        if (!autoDemoRunning) return;
+        
+        const progressBar = document.getElementById('demo-progress-bar');
+        let progress = 0;
+        
+        // 阶段1: idle -> 显示欢迎语 (0-2秒)
+        setState('idle');
+        cycleWelcome();
+        
+        const progressInterval = setInterval(() => {
+            progress += 2;
+            progressBar.style.width = `${progress}%`;
+        }, 100);
+        
+        setTimeout(() => {
+            if (!autoDemoRunning) {
+                clearInterval(progressInterval);
+                return;
+            }
+            // 阶段2: connecting (2-4秒)
+            setState('connecting');
+            
+            setTimeout(() => {
+                if (!autoDemoRunning) {
+                    clearInterval(progressInterval);
+                    return;
+                }
+                // 阶段3: active - 模拟通话 (4-12秒)
+                setState('active');
+                addLog('📞 通话已接通');
+                
+                setTimeout(() => {
+                    if (!autoDemoRunning) {
+                        clearInterval(progressInterval);
+                        return;
+                    }
+                    // 阶段4: 挂断回到 idle
+                    simulateHangup();
+                    addLog('📴 通话已结束');
+                    
+                    clearInterval(progressInterval);
+                    progressBar.style.width = '0%';
+                    
+                    // 循环演示
+                    if (autoDemoRunning) {
+                        setTimeout(runDemoCycle, 2000);
+                    }
+                }, 8000);
+            }, 2000);
+        }, 2000);
+    }
+    
+    // ============ 日志抽屉 ============
+    let logCount = 0;
+    
+    /**
+     * 切换日志抽屉
+     */
+    function toggleDrawer() {
+        const drawer = document.getElementById('log-drawer');
+        drawer.classList.toggle('show');
+    }
+    
+    /**
+     * 添加测试日志
+     */
+    function addLog(message) {
+        const logContent = document.getElementById('log-content');
+        const time = new Date().toLocaleTimeString();
+        const text = message || `测试日志 #${++logCount}`;
+        
+        if (logContent.querySelector('p')) {
+            logContent.innerHTML = '';
+        }
+        
+        const logEntry = document.createElement('p');
+        logEntry.textContent = `[${time}] ${text}`;
+        logEntry.style.marginBottom = '8px';
+        logContent.appendChild(logEntry);
+        
+        // 滚动到底部
+        logContent.scrollTop = logContent.scrollHeight;
+    }
+    
+    // ============ 事件绑定 ============
+    document.addEventListener('DOMContentLoaded', () => {
+        // 检测震动支持
+        checkVibrateSupport();
+        
+        // 拨号按钮
+        document.getElementById('btn-dial').addEventListener('click', () => {
+            simulateDial();
+        });
+        
+        // 挂断按钮
+        document.getElementById('btn-hangup').addEventListener('click', () => {
+            simulateHangup();
+        });
+        
+        // 静音按钮（切换状态）
+        const muteBtn = document.getElementById('btn-mute');
+        let isMuted = false;
+        muteBtn.addEventListener('click', () => {
+            isMuted = !isMuted;
+            muteBtn.querySelector('span').textContent = isMuted ? '🔇' : '🎤';
+            triggerVibrate('short');
+        });
+        
+        // 日志抽屉开关
+        document.getElementById('btn-toggle-log').addEventListener('click', toggleDrawer);
+        document.getElementById('btn-close-log').addEventListener('click', toggleDrawer);
+        
+        // 初始欢迎语
+        setTimeout(() => {
+            cycleWelcome();
+        }, 500);
+        
+        console.log('🧪 UI 测试页面已加载');
+        console.log('可用命令: setState(), simulateDial(), simulateHangup(), startTimer(), pauseTimer(), resetTimer()');
+    });
+    </script>
+</body>
+</html>
