@@ -148,9 +148,7 @@ async function initFeishuAuth() {
                 AppState.authCode = res.code;
                 console.log('[飞书] 免登成功，code:', res.code);
                 addLog('✅ 飞书免登成功');
-                
-                // TODO: 将 code 发送到后端换取用户信息
-                sendCodeToBackend(res.code);
+                // code 已缓存，实际鉴权在 WebSocket 建立时完成
             },
             fail(err) {
                 console.error('[飞书] 免登失败:', err);
@@ -161,26 +159,6 @@ async function initFeishuAuth() {
         console.error('[飞书] 配置获取失败:', err);
         addLog('❌ 飞书配置获取失败: ' + err.message);
     }
-}
-
-/**
- * 将授权码发送到后端
- * @param {string} code - 飞书授权码
- */
-function sendCodeToBackend(code) {
-    // TODO: 实现与后端的通信
-    fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code })
-    })
-    .then(res => res.json())
-    .then(data => {
-        console.log('[后端] 认证响应:', data);
-    })
-    .catch(err => {
-        console.error('[后端] 认证请求失败:', err);
-    });
 }
 
 // ============ 欢迎语动画 ============

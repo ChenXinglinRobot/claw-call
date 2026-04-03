@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import copy
 import shutil
@@ -51,10 +52,7 @@ class OpenClawBridge:
     
     # 归档水位线（字符数阈值）
     ARCHIVE_THRESHOLD_CHARS = 35000
-    
-    # OpenClaw Gateway 配置（从环境变量读取，避免硬编码泄露）
-    OPENCLAW_GATEWAY_URL = "http://127.0.0.1:12392/v1/chat/completions"
-    OPENCLAW_AGENT_ID = "main"
+     # OpenClaw Gateway URL AGENT_ID配置（从环境变量读取，避免硬编码泄露）
 
     def __init__(self, feishu_app_id: str, feishu_app_secret: str, memory_dir: str = "memory"):
         """
@@ -73,14 +71,25 @@ class OpenClawBridge:
         self.templates_dir = os.path.join(self.memory_dir, "templates")
         self.users_dir = os.path.join(self.memory_dir, "users")
         
-        # 从环境变量读取 OpenClaw Token（避免硬编码泄露）
+        # 从环境变量读取 OpenClaw 配置（避免硬编码泄露）
         self.openclaw_token = os.getenv("OPENCLAW_TOKEN", "")
+        self.gateway_url = os.getenv("OPENCLAW_GATEWAY_URL", "http://127.0.0.1:12392/v1/chat/completions")
+        self.agent_id = os.getenv("OPENCLAW_AGENT_ID", "main")
         
-        # 复用异步 HTTP 客户端连接池，显著降低高并发下的建联延迟
-        self.http_client = httpx.AsyncClient(timeout=15.0)
+        # 懒加载：不在初始化时创建 client，避免 Event Loop 未启动的报错
+        self._http_client = None
+        # 强引用集合：防止后台任务被 Python 垃圾回收机制静默杀掉
+        self.background_tasks = set()
         
         # 确保核心目录存在
         self._ensure_core_directories()
+
+    @property
+    def http_client(self):
+        """安全获取异步 HTTP 客户端（懒加载）"""
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(timeout=15.0)
+        return self._http_client
 
     def _ensure_core_directories(self):
         """
@@ -91,6 +100,31 @@ class OpenClawBridge:
         # templates 目录也确保存在（但不强制创建，因为应该由部署时提供）
         if not os.path.exists(self.templates_dir):
             print(f"[OpenClawBridge] 警告：模板目录 {self.templates_dir} 不存在，新用户初始化将失败！")
+
+    def _normalize_project_name(self, project_name: str) -> str:
+        """
+        规范化项目名称：安全校验 + 自动补全后缀
+        
+        1. 安全校验：检查去除后缀的项目名是否仅包含字母、数字、下划线、连字符
+        2. 防御路径穿越攻击（如 "../../../etc/passwd"）
+        3. 自动补全 "_project" 后缀
+        
+        Args:
+            project_name: 原始项目名称
+            
+        Returns:
+            规范化后的项目名称（带 _project 后缀）
+        """
+        # 去除可能存在的后缀
+        base_name = project_name.replace("_project", "")
+        
+        # 安全校验：仅允许字母、数字、下划线、连字符
+        if not re.match(r'^[\w\-]+$', base_name):
+            print(f"[OpenClawBridge] 警告：项目名 '{base_name}' 包含非法字符，回退为默认项目")
+            base_name = self.DEFAULT_ACTIVE_PROJECT
+        
+        # 统一补全后缀
+        return f"{base_name}_project"
 
     def _get_user_sandbox_path(self, user_id: str) -> str:
         """
@@ -365,9 +399,8 @@ class OpenClawBridge:
         status = await self._read_user_status(user_id)
         project_name = status.get("active_project", self.DEFAULT_ACTIVE_PROJECT)
         
-        # 确保项目名带有 _project 后缀
-        if not project_name.endswith("_project"):
-            project_name = f"{project_name}_project"
+        # 规范化项目名称（安全校验 + 自动补全后缀）
+        project_name = self._normalize_project_name(project_name)
         
         # 2. 拼接 prompt.json 路径
         prompt_path = self._get_prompt_path(user_id, project_name)
@@ -427,9 +460,8 @@ class OpenClawBridge:
             status = await self._read_user_status(user_id)
             project_name = status.get("active_project", self.DEFAULT_ACTIVE_PROJECT)
         
-        # 确保项目名带有 _project 后缀
-        if not project_name.endswith("_project"):
-            project_name = f"{project_name}_project"
+        # 规范化项目名称（安全校验 + 自动补全后缀）
+        project_name = self._normalize_project_name(project_name)
         
         memory_path = self._get_memory_log_path(user_id, project_name)
         
@@ -471,9 +503,8 @@ class OpenClawBridge:
         status = await self._read_user_status(user_identifier)
         project_name = status.get("active_project", self.DEFAULT_ACTIVE_PROJECT)
         
-        # 确保项目名带有 _project 后缀（规范化）
-        if not project_name.endswith("_project"):
-            project_name = f"{project_name}_project"
+        # 规范化项目名称（安全校验 + 自动补全后缀）
+        project_name = self._normalize_project_name(project_name)
         
         # 2. 动态加载 prompt.json（由 OpenClaw 维护，已包含浓缩后的核心记忆）
         config = await self._load_prompt_config(user_identifier)
@@ -511,7 +542,7 @@ class OpenClawBridge:
         
         V2.2 关键变更：新增弹性水位检测与异步通知 OpenClaw
         - 挂断时检测 memory_log.md 字符数
-        - 若 >= 50000 字符，触发分卷归档
+        - 若 >= 35000 字符，触发分卷归档
         - 异步通知 OpenClaw 执行记忆结算（Fire-and-Forget）
         
         Args:
@@ -532,9 +563,8 @@ class OpenClawBridge:
             project_name = status.get("active_project", self.DEFAULT_ACTIVE_PROJECT)
             print(f"[OpenClawBridge] 无快照，实时读取状态回写记忆: {project_name}")
         
-        # 确保项目名带有 _project 后缀
-        if not project_name.endswith("_project"):
-            project_name = f"{project_name}_project"
+        # 规范化项目名称（安全校验 + 自动补全后缀）
+        project_name = self._normalize_project_name(project_name)
         
         # 获取记忆文件路径
         file_path = self._get_memory_log_path(user_identifier, project_name)
@@ -561,7 +591,12 @@ class OpenClawBridge:
         archive_info = await self.check_and_archive_memory(user_identifier, project_name)
         
         # ============ V2.2 新增：异步通知 OpenClaw（Fire-and-Forget）============
-        asyncio.create_task(self._notify_openclaw(user_identifier, project_name, archive_info))
+        task = asyncio.create_task(self._notify_openclaw(user_identifier, project_name, archive_info))
+        
+        # 将任务添加到强引用集合，防止被 GC 意外回收
+        self.background_tasks.add(task)
+        # 任务执行完毕后，自动从集合中移除，避免内存泄漏
+        task.add_done_callback(self.background_tasks.discard)
 
     async def switch_project(self, user_id: str, project_name: str) -> bool:
         """
@@ -576,9 +611,8 @@ class OpenClawBridge:
         Returns:
             True 表示切换成功，False 表示失败
         """
-        # 确保项目名带有 _project 后缀
-        if not project_name.endswith("_project"):
-            project_name = f"{project_name}_project"
+        # 规范化项目名称（安全校验 + 自动补全后缀）
+        project_name = self._normalize_project_name(project_name)
         
         # 验证目标项目是否存在
         project_path = self._get_project_path(user_id, project_name)
@@ -725,12 +759,12 @@ class OpenClawBridge:
         headers = {
             "Authorization": f"Bearer {self.openclaw_token}",
             "Content-Type": "application/json",
-            "x-openclaw-agent-id": self.OPENCLAW_AGENT_ID,
+            "x-openclaw-agent-id": self.agent_id,
         }
 
         try:
             # 使用类内部复用的 http_client 性能更好
-            resp = await self.http_client.post(self.OPENCLAW_GATEWAY_URL, headers=headers, json=payload)
+            resp = await self.http_client.post(self.gateway_url, headers=headers, json=payload)
             resp.raise_for_status()
             print(f"[OpenClawBridge] 门铃已按响，异步通知发送成功。状态码: {resp.status_code}")
         except httpx.HTTPStatusError as e:

@@ -21,7 +21,7 @@ ENV/
 *.swo
 
 # 记忆文件目录（运行时生成）
-memory/
+memory/users
 
 # 测试文件
 *.pyc
