@@ -13,7 +13,6 @@ from doubao_client import DoubaoClient
 from session_manager import SessionManager
 from openclaw_bridge import OpenClawBridge, FeishuAuthException
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware  # <-- 新增导入
 
 # ============ 全局配置常量（从环境变量加载）============
 # 火山引擎豆包 API 配置
@@ -31,20 +30,6 @@ FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
 MEMORY_DIR = os.getenv("MEMORY_DIR", "memory")
 
 app = FastAPI()
-
-# --- 新增：严格的安全跨域策略 ---
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://*.cpolar.cn",       # 仅允许你自己的 cpolar 域名访问
-        "https://*.feishu.cn",       # 允许飞书官方域名
-    ],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-)
-# ------------------------------
-
 
 # 新增：将 static 文件夹挂载到根目录
 app.mount("/app", StaticFiles(directory="static", html=True), name="static")

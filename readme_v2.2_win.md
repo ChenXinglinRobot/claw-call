@@ -2,7 +2,7 @@
 
 ## 📖 项目简介
 
-本项目是一个基于**飞书网页应用 (Web App)** 构建的多场景语音对话系统。通过构建纯 Python 异步中转基站，项目成功解耦了前端（飞书 H5）与大模型语音引擎（火山引擎豆包 API），实现了极低延迟的端到端实时语音对话。
+本项目是一个基于**飞书网页应用 (Web App)** 构建的多场景语音对话系统。通过构建纯 Python 异步中转基站，项目成功解耦了前端（飞书 H5）与大模型语音引擎（火山引擎豆包 API），实现了极低延迟的端到端实时语音对话。同时，系统集成了 OpenClaw 桥接层，用于接管对话上下文记忆和个性化提示词注入。
 
 > **架构亮点**：采用**控制面与数据面分离**设计，支持多场景动态路由与沙盒隔离，实现前端"皮"与后端"魂"的彻底解耦。
 
@@ -10,34 +10,36 @@
 
 ---
 
-## 🆕 V2.2 更新亮点
+## 🆕 版本更新历程
 
-### 1. 全新 UI 界面
+### V2.2 更新亮点
+
+#### 1. 全新 UI 界面
 - 采用弥散光球背景，动态呼吸效果，视觉体验升级
 - 状态机驱动的界面切换：idle/connecting/active 三态流转
 - 光球颜色随状态变化：温暖色调（idle）→ 活跃色调（active）
 
-### 2. 适老化交互设计
+#### 2. 适老化交互设计
 - 超大触控区域，绿色拨号按钮 100px，红色挂断按钮 140px
 - 毛玻璃效果的日志抽屉，底部滑出动画
 - 震动反馈增强操作确认感
 
-### 3. 欢迎语动画系统
+#### 3. 欢迎语动画系统
 - 8 条欢迎语循环淡入淡出
 - 每 5 秒自动切换，增强用户陪伴感
 - 支持自定义扩展欢迎语列表
 
-### 4. 计时器与状态同步
+#### 4. 计时器与状态同步
 - 通话计时器实时显示
 - 状态切换自动控制计时器启停
 - 挂断时记录通话时长
 
-### 5. 文件结构优化
+#### 5. 文件结构优化
 - 新增 `voice.html` + `voice.js` 替代原 `index.html` + `app.js`
 - 文件重命名提升安全性，防止路径枚举
 
-### 6. 🆕 三层记忆分卷与防溢出架构
-- **弹性水位检测**：挂断时自动检测 `memory_log.md` 字符数，阈值 50000 字符
+#### 6. 三层记忆分卷与防溢出架构
+- **弹性水位检测**：挂断时自动检测 `memory_log.md` 字符数，阈值 35000 字符
 - **物理搬运归档**：触发阈值后自动移动到 `raw_archives/raw_vol_xxx.md`
 - **异步 OpenClaw 通知**：Fire-and-Forget 模式通知 OpenClaw 执行记忆结算
 - **目录结构升级**：新增 `raw_archives/`、`episodes/`、`master_profile.md`
@@ -45,19 +47,29 @@
 
 ---
 
-## 🆕 V2.1 更新亮点
+### V2.1 更新亮点
 
-### 1. 状态快照机制
+#### 1. 状态快照机制
 - 会话创建时锁定 `project_snapshot`，确保记忆回写不因并发修改而错位
 - 解决通话期间切换场景导致的记忆文件交叉污染问题
 
-### 2. Speaker ID 修复
+#### 2. Speaker ID 修复
 - 修复 `interview_project` 使用无效 speaker ID (`zh_male_chunhoudahui_moon_bigtts`) 导致无声音的问题
 - 更新为官方支持的男性音色 `zh_male_yunzhou_jupiter_bigtts`（清爽沉稳的男声）
 
-### 3. 错误日志拦截增强
+#### 3. 错误日志拦截增强
 - 新增三层错误拦截机制，精准捕获豆包 API 返回的各类错误
 - 避免控制台刷屏，仅打印真正的错误和异常事件
+
+---
+
+### V2.0 更新亮点
+
+#### 多场景动态路由与沙盒隔离架构
+- 抛弃全局配置文件，采用基于用户的物理沙盒隔离
+- 支持 vocab（英语学习）和 interview（长辈访谈）双场景动态切换
+- 新用户自动初始化沙盒，无需手动配置
+- 场景切换无需重启服务，实时生效
 
 ---
 
@@ -67,15 +79,15 @@
 
 本架构采用**控制面（Control Plane）与数据面（Data Plane）分离**的核心思想：
 
-- **前端（数据面）**：纯净、无状态的语音透传通道。无论应用场景如何变化，H5 前端代码 0 修改。
-- **Agent（控制面）**：OpenClaw 拥有最高决策权。负责维护用户的"状态灯（`status.json`）"。
+- **前端（数据面）**：纯净、无状态的语音透传通道。无论应用场景如何变化，H5 前端代码 0 修改，仅负责采集麦克风流、传递飞书免登 Code 并播放音频。
+- **Agent（控制面）**：OpenClaw 拥有最高决策权。通过自然语言交互，OpenClaw 负责在后台修改用户的"状态指示灯（`status.json`）"和"情境提示词（`prompt.json`）"。
 - **后端基站（路由层）**：FastAPI 演变为动态组装工厂，引入"状态快照"机制确保单次通话的逻辑连贯性。
 
 ### 架构图
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           飞书 H5 前端 (🆕 V2.2 全新 UI)                  │
+│                           飞书 H5 前端 (V2.2 全新 UI)                     │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                  │
 │  │ 麦克风采集   │    │ 降采样 16kHz│    │ WebSocket   │                  │
 │  │ (Web Audio) │ -> │ PCM 16-bit  │ -> │ 发送音频流  │                  │
@@ -86,7 +98,7 @@
 │  │ (24kHz PCM) │    │ (队列式播放) │    │ (二进制帧)  │                  │
 │  └─────────────┘    └─────────────┘    └─────────────┘                  │
 │                                                                         │
-│  🆕 V2.2 UI 组件:                                                       │
+│  V2.2 UI 组件:                                                          │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                  │
 │  │ 弥散光球背景 │    │ 状态机驱动  │    │ 欢迎语动画  │                  │
 │  │ (呼吸效果)  │    │ idle/active │    │ (淡入淡出)  │                  │
@@ -110,40 +122,41 @@
 │  │ • 事件路由分发     │  │ • 二进制协议封包│  │ • 飞书免登鉴权    │      │
 │  │ • ASR/Chat 流式   │  │ • 音频流收发    │  │ • 动态沙盒路由    │      │
 │  │ • V2.1 三层错误拦截│  │ • 优雅断连      │  │ • V2.1 状态快照返回│      │
-│  └───────────────────┘  └─────────────────┘  └───────────────────┘      │
+│  └───────────────────┘  └─────────────────┘  │ • V2.2 三层记忆分卷│      │
+│                                              └───────────────────┘      │
 │                                                         │                │
 │                         ┌───────────────────────────────┘                │
 │                         ▼                                                │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │                    沙盒隔离区 (memory/) 🆕 V2.2 三层记忆架构       │   │
+│  │                    沙盒隔离区 (memory/) V2.2 三层记忆架构          │   │
 │  │  ┌─────────────────────────────────────────────────────────────┐ │   │
 │  │  │ templates/ (静态只读模板库)                                   │ │   │
 │  │  │   ├── vocab_project/                                         │ │   │
 │  │  │   │   ├── prompt.json         (英语学习场景配置)              │ │   │
-│  │  │   │   ├── master_profile.md   (二级记忆 L2 全局大纲) 🆕       │ │   │
-│  │  │   │   ├── raw_archives/       (原文冷库) 🆕                   │ │   │
-│  │  │   │   └── episodes/           (一级记忆 L1 摘要) 🆕           │ │   │
+│  │  │   │   ├── master_profile.md   (二级记忆 L2 全局大纲)          │ │   │
+│  │  │   │   ├── raw_archives/       (原文冷库)                      │ │   │
+│  │  │   │   └── episodes/           (一级记忆 L1 摘要)              │ │   │
 │  │  │   └── interview_project/                                    │ │   │
-│  │  │       ├── prompt.json         (访谈场景配置) ✅已修复         │ │   │
-│  │  │       ├── master_profile.md   (二级记忆 L2 全局大纲) 🆕       │ │   │
-│  │  │       ├── raw_archives/       (原文冷库) 🆕                   │ │   │
-│  │  │       └── episodes/           (一级记忆 L1 摘要) 🆕           │ │   │
+│  │  │       ├── prompt.json         (访谈场景配置)                  │ │   │
+│  │  │       ├── master_profile.md   (二级记忆 L2 全局大纲)          │ │   │
+│  │  │       ├── raw_archives/       (原文冷库)                      │ │   │
+│  │  │       └── episodes/           (一级记忆 L1 摘要)              │ │   │
 │  │  └─────────────────────────────────────────────────────────────┘ │   │
 │  │  ┌─────────────────────────────────────────────────────────────┐ │   │
 │  │  │ users/{user_id}/ (用户独立沙盒)                               │ │   │
 │  │  │   ├── status.json                    (当前激活项目状态灯)     │ │   │
 │  │  │   ├── vocab_project/                                         │ │   │
 │  │  │   │   ├── prompt.json                (词汇专属设定)           │ │   │
-│  │  │   │   ├── memory_log.md              (零级记忆 L0 活跃流) 🆕  │ │   │
-│  │  │   │   ├── master_profile.md          (二级记忆 L2) 🆕        │ │   │
-│  │  │   │   ├── raw_archives/              (原文冷库) 🆕           │ │   │
-│  │  │   │   └── episodes/                  (一级记忆 L1) 🆕        │ │   │
+│  │  │   │   ├── memory_log.md              (零级记忆 L0 活跃流)     │ │   │
+│  │  │   │   ├── master_profile.md          (二级记忆 L2)            │ │   │
+│  │  │   │   ├── raw_archives/              (原文冷库)               │ │   │
+│  │  │   │   └── episodes/                  (一级记忆 L1)            │ │   │
 │  │  │   └── interview_project/                                    │ │   │
-│  │  │       ├── prompt.json                (访谈专属设定) ✅已修复  │ │   │
-│  │  │       ├── memory_log.md              (零级记忆 L0 活跃流) 🆕  │ │   │
-│  │  │       ├── master_profile.md          (二级记忆 L2) 🆕        │ │   │
-│  │  │       ├── raw_archives/              (原文冷库) 🆕           │ │   │
-│  │  │       └── episodes/                  (一级记忆 L1) 🆕        │ │   │
+│  │  │       ├── prompt.json                (访谈专属设定)           │ │   │
+│  │  │       ├── memory_log.md              (零级记忆 L0 活跃流)     │ │   │
+│  │  │       ├── master_profile.md          (二级记忆 L2)            │ │   │
+│  │  │       ├── raw_archives/              (原文冷库)               │ │   │
+│  │  │       └── episodes/                  (一级记忆 L1)            │ │   │
 │  │  └─────────────────────────────────────────────────────────────┘ │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -158,6 +171,14 @@
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 核心数据流
+
+| 方向 | 数据格式 | 说明 |
+|------|---------|------|
+| **上行 (User -> AI)** | 16kHz PCM (16-bit 小端序) | 前端 Web Audio API 采集并降采样，每 20ms 发送一帧 |
+| **下行 (AI -> User)** | 24kHz PCM (16-bit 小端序) | 豆包 TTS 输出，前端队列式流式播放 |
+| **信令控制** | JSON 文本帧 | `start_session`, `mic_status`, `finish_session` 等 |
+
 ---
 
 ## 📁 项目文件结构
@@ -165,38 +186,87 @@
 ```
 phonecall/
 ├── server.py                 # FastAPI 主入口，WebSocket 路由
-├── doubao_client.py          # 豆包 WebSocket 客户端
-├── session_manager.py        # 会话生命周期管理器 (V2.1: 三层错误拦截)
-├── openclaw_bridge.py        # 飞书鉴权与动态沙盒路由桥接层 (V2.1: 状态快照)
+├── doubao_client.py          # 豆包 WebSocket 客户端（二进制协议封包）
+├── session_manager.py        # 会话生命周期管理器（三层错误拦截）
+├── openclaw_bridge.py        # 飞书鉴权与动态沙盒路由桥接层（状态快照+记忆分卷）
 ├── protocol.py               # 豆包底层二进制协议常量
+├── .env                      # 环境变量配置（敏感信息）
 ├── .env.example              # 环境变量模板
+├── requirements.txt          # Python 依赖列表
 ├── memory/                   # 系统记忆与沙盒根目录
 │   ├── templates/            # 静态只读区：新用户初始化模板库
 │   │   ├── vocab_project/
-│   │   │   └── prompt.json   # ✅ 英语词汇导师配置 (female speaker)
+│   │   │   ├── prompt.json   # 英语词汇导师配置
+│   │   │   ├── master_profile.md
+│   │   │   ├── raw_archives/
+│   │   │   └── episodes/
 │   │   └── interview_project/
-│   │       └── prompt.json   # ✅ V2.1 修复: 男性音色 speaker ID
+│   │       ├── prompt.json   # 访谈助手配置
+│   │       ├── master_profile.md
+│   │       ├── raw_archives/
+│   │       └── episodes/
 │   └── users/                # 动态读写区：飞书用户独立沙盒
 │       └── {user_id}/
-│           ├── status.json
+│           ├── status.json   # 核心状态灯 (active_project)
 │           ├── vocab_project/
 │           └── interview_project/
 ├── static/
-│   ├── voice.html            # 🆕 V2.2 全新 UI 主页面
-│   ├── voice.js              # 🆕 V2.2 核心业务逻辑
-│   ├── style.css             # 🆕 V2.2 样式文件
-│   ├── test_ui.html          # 🆕 V2.2 UI 测试页面
+│   ├── voice.html            # V2.2 全新 UI 主页面
+│   ├── voice.js              # V2.2 核心业务逻辑
+│   ├── style.css             # V2.2 样式文件
+│   ├── test_ui.html          # UI 测试页面
 │   ├── test_h5_xl2026.html   # 飞书 H5 前端测试端（旧版存档）
 │   ├── index.html            # 旧版存档
 │   └── app.js                # 旧版存档
 ├── docs_by_lark_fangzhou/    # 参考文档目录
-├── Architecture_V2.md        # 多场景动态路由架构说明
-├── Architecture_V2.1.md      # V2.1 架构修订版
-├── Readme.md                 # 原 README 文档
-├── readme_new_win.md         # V2.0 README 文档
-├── readme_v2.1_win.md        # V2.1 README 文档
-└── readme_v2.2_win.md        # 本文档 (V2.2)
+├── 之前的readme/              # 历史文档存档
+├── 测试文件/                  # 测试脚本存档
+└── readme_v2.2_win.md        # 本文档
 ```
+
+---
+
+## 🔧 核心模块说明
+
+### 后端模块
+
+| 文件 | 核心职责 |
+|------|---------|
+| `server.py` | FastAPI 主入口，挂载静态文件，管理 WebSocket 连接，实现 30 秒断线重连容灾机制 |
+| `doubao_client.py` | 纯异步的豆包 WebSocket 客户端，严格实现火山引擎底层二进制协议（Header + Payload 封包/解包） |
+| `session_manager.py` | 会话生命周期管理，拦截并解析大模型事件（ASR/TTS/Chat），流式文本拼接，三层错误拦截 |
+| `openclaw_bridge.py` | 飞书免登鉴权，动态沙盒路由，多场景切换，记忆隔离回写，三层记忆分卷归档 |
+| `protocol.py` | 豆包二进制协议常量定义（消息类型、序列化方式、压缩方式等） |
+
+### 前端模块
+
+| 文件 | 核心职责 |
+|------|---------|
+| `static/voice.html` | V2.2 全新 UI 主页面，弥散光球背景，状态机驱动 |
+| `static/voice.js` | V2.2 核心业务逻辑，飞书 JSSDK 集成，麦克风采集、降采样、流式播放 |
+| `static/style.css` | V2.2 样式文件，适老化设计，毛玻璃效果 |
+
+---
+
+## 🔄 核心流转机制
+
+### 1. 静默注册与防呆机制
+当新的飞书 `user_id` 首次连接时，后端侦测到 `/users/{user_id}` 目录不存在，会自动从 `/templates/` 复制全套默认文件为其建立沙盒，并将默认状态指向最安全的备用场景（如 `vocab`）。
+
+### 2. 原子写入防碰撞
+OpenClaw 在切换场景或更新 Prompt 时，必须先将内容写入 `status.tmp`，校验无误后瞬间重命名为 `status.json`，防止高并发下 FastAPI 读到残缺的 JSON 导致系统崩溃。
+
+### 3. 内存动态组装
+FastAPI 拿到 `user_id` -> 读取该用户的 `status.json` -> 获悉 `active_project` -> 拼接绝对路径读取对应的 `prompt.json` 和 `memory_log.md` -> 在内存中组合发送给豆包 API。
+
+### 4. 状态快照机制 (V2.1)
+会话创建时锁定 `project_snapshot`，确保记忆回写不因并发修改而错位。即使通话期间状态被外部修改，回写依然精准。
+
+### 5. 三层记忆分卷 (V2.2)
+- **L0 零级记忆**：`memory_log.md` 当前活跃的聊天流
+- **L1 一级记忆**：`episodes/` 存放摘要
+- **L2 二级记忆**：`master_profile.md` 全局大纲
+- **冷库**：`raw_archives/` 原文归档（超过 35000 字符自动分卷）
 
 ---
 
@@ -256,6 +326,25 @@ phonecall/
 
 ---
 
+## 🚨 错误日志拦截机制 (V2.1 新增)
+
+### 三层错误拦截
+
+`session_manager.py` 中的 `_route_event` 方法实现了三层错误拦截：
+
+#### 第一层：应用层错误事件（JSON 格式）
+- **event 51**：`ConnectionFailed` - 连接建立失败
+- **event 153**：`SessionFailed` - 会话启动失败
+- **event 599**：`DialogCommonError` - 实时通话错误
+
+#### 第二层：payload 中的 error 字段
+某些错误事件的 payload 包含 `{"error": "具体错误信息"}`。
+
+#### 第三层：二进制协议级错误帧
+当豆包返回二进制错误帧（Message Type = `0b1111`）时触发。
+
+---
+
 ## 🚀 Windows 本地测试指南
 
 ### 1. 环境依赖
@@ -264,12 +353,32 @@ phonecall/
 pip install fastapi uvicorn websockets httpx aiofiles python-dotenv
 ```
 
+或使用 requirements.txt：
+
+```bash
+pip install -r requirements.txt
+```
+
 ### 2. 配置环境变量
 
 ```bash
 copy .env.example .env
 # 编辑 .env 文件，填入真实的 API Key
 ```
+
+**`.env` 配置项说明：**
+
+| 变量名 | 说明 | 示例值 |
+|--------|------|--------|
+| `DOUBAO_APP_ID` | 火山引擎应用 ID | `your_app_id` |
+| `DOUBAO_ACCESS_KEY` | 火山引擎 Access Key | `your_access_key` |
+| `DOUBAO_RESOURCE_ID` | 资源 ID | `volc.speech.dialog` |
+| `DOUBAO_APP_KEY` | 应用 Key | `your_app_key` |
+| `DOUBAO_WSS_URL` | 豆包 WebSocket 地址 | `wss://openspeech.bytedance.com/api/v3/realtime/dialogue` |
+| `FEISHU_APP_ID` | 飞书应用 ID | `cli_xxx` |
+| `FEISHU_APP_SECRET` | 飞书应用密钥 | `xxx` |
+| `OPENCLAW_TOKEN` | OpenClaw Gateway Token | `xxx` |
+| `MEMORY_DIR` | 记忆文件存储目录 | `memory` |
 
 ### 3. 启动服务
 
@@ -310,12 +419,12 @@ cpolar http 8000
 | V2.1 状态快照机制 | ✅ 已完成 | 会话创建时锁定项目，确保记忆回写一致 |
 | V2.1 错误日志拦截 | ✅ 已完成 | 三层拦截机制，精准捕获各类错误 |
 | V2.1 Speaker ID 修复 | ✅ 已完成 | interview 项目使用正确的男性音色 |
-| 🆕 V2.2 全新 UI 界面 | ✅ 已完成 | 弥散光球 + 状态机驱动 + 适老化设计 |
-| 🆕 V2.2 欢迎语动画 | ✅ 已完成 | 8 条欢迎语循环淡入淡出 |
-| 🆕 V2.2 计时器功能 | ✅ 已完成 | 通话计时 + 状态同步 |
-| 🆕 V2.2 震动反馈 | ✅ 已完成 | 飞书 API / 原生 Vibration API |
-| 🆕 V2.2 三层记忆分卷 | ✅ 已完成 | 弹性水位检测 + 物理归档 + 异步通知 |
-| 🆕 V2.2 目录结构升级 | ✅ 已完成 | raw_archives/ + episodes/ + master_profile.md |
+| V2.2 全新 UI 界面 | ✅ 已完成 | 弥散光球 + 状态机驱动 + 适老化设计 |
+| V2.2 欢迎语动画 | ✅ 已完成 | 8 条欢迎语循环淡入淡出 |
+| V2.2 计时器功能 | ✅ 已完成 | 通话计时 + 状态同步 |
+| V2.2 震动反馈 | ✅ 已完成 | 飞书 API / 原生 Vibration API |
+| V2.2 三层记忆分卷 | ✅ 已完成 | 弹性水位检测 + 物理归档 + 异步通知 |
+| V2.2 目录结构升级 | ✅ 已完成 | raw_archives/ + episodes/ + master_profile.md |
 
 ---
 
@@ -323,7 +432,7 @@ cpolar http 8000
 
 | 日期 | 版本 | 更新内容 |
 |------|------|---------|
-| 2026-04-03 | v2.2.1 | 🆕 三层记忆分卷与防溢出架构：弹性水位检测(50000字符)、物理搬运归档、异步OpenClaw通知、目录结构升级 |
+| 2026-04-03 | v2.2.1 | 三层记忆分卷与防溢出架构：弹性水位检测(35000字符)、物理搬运归档、异步OpenClaw通知、目录结构升级 |
 | 2026-04-02 | v2.2 | 全新 UI 界面：弥散光球背景、状态机驱动、欢迎语动画、计时器、震动反馈 |
 | 2026-04-02 | v2.1 | 引入状态快照机制；修复 interview speaker ID；新增三层错误日志拦截 |
 | 2026-04-02 | v2.0 | 重构为多场景动态路由与沙盒隔离架构，支持 vocab/interview 双场景 |
@@ -333,9 +442,21 @@ cpolar http 8000
 
 ## 📚 相关文档
 
-- [Architecture_V2.md](Architecture_V2.md) - 多场景动态路由架构说明
-- [Architecture_V2.1.md](Architecture_V2.1.md) - V2.1 架构修订版
-- [docs_by_lark_fangzhou/豆包通话.md](docs_by_lark_fangzhou/豆包通话.md) - 豆包实时语音 API 官方文档
+### 架构设计文档
+- `之前的readme/Architecture_V2.md` - 多场景动态路由架构说明
+- `之前的readme/Architecture_V2.1.md` - V2.1 架构修订版
+- `之前的readme/整体后端架构设计规划.md` - 完整后端架构设计规划
+
+### 历史版本 README
+- `之前的readme/Readme.md` - 原 V1.0 README 文档
+- `之前的readme/readme_new_win.md` - V2.0 README 文档
+- `之前的readme/readme_v2.1_win.md` - V2.1 README 文档
+
+### 官方文档
+- `docs_by_lark_fangzhou/豆包通话.md` - 豆包实时语音 API 官方文档
+- `docs_by_lark_fangzhou/keepalive.md` - 静音保活配置说明
+- `docs_by_lark_fangzhou/飞书网页应用开发文档.md` - 飞书 H5 开发指南
+- `docs_by_lark_fangzhou/获取授权码.md` - 飞书免登授权流程
 
 ---
 
