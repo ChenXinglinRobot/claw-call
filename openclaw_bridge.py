@@ -725,29 +725,39 @@ class OpenClawBridge:
     async def _notify_openclaw(self, user_id: str, project_name: str, archive_info: dict) -> None:
         """
         V2.2 新增：异步通知 OpenClaw 执行记忆结算
-        
         使用 Fire-and-Forget 模式，非阻塞发送 HTTP POST 请求
-        
-        Args:
-            user_id: 飞书用户身份标识
-            project_name: 项目名称
-            archive_info: 归档信息字典（来自 check_and_archive_memory）
         """
+        # ============ 新增：项目与专属 Skill 的硬绑定字典 ============
+        PROJECT_SKILL_MAP = {
+            "vocab_project": "vocab-learning-planner",
+            "interview_project": "elder-interview-planner"
+        }
+        # 获取目标技能，默认兜底为 elder_interview_planner
+        target_skill = PROJECT_SKILL_MAP.get(project_name, "elder-interview-planner")
+
+        # ============ 新增：获取项目绝对路径 GPS ============
+        project_path = self._get_project_path(user_id, project_name)
+        abs_project_path = os.path.abspath(project_path)
+
         # 根据是否触发归档，动态生成指令
         if archive_info and archive_info.get("triggered"):
             archived_file = archive_info.get("archived_file")
             char_count = archive_info.get("char_count", 0)
             content = (
-                f"[系统通知] 用户 {user_id} 的 {project_name} 语音通话结束。"
+                f"[系统通知] 用户 {user_id} 的 {project_name} 语音通话结束。\n"
+                f"【项目绝对路径】: {abs_project_path}\n"
+                f"⚠️ 【强制指令】：请立即调用并执行你的『{target_skill}』技能来完成本次任务！\n"
                 f"本次通话触发了强制分卷，原始日志（{char_count} 字符）已移至 raw_archives/{archived_file}。"
-                f"请立即执行长文本提炼，生成摘要到 episodes/ 中，并更新 master_profile.md 和 prompt.json。"
+                f"请立即进入该绝对路径，执行长文本提炼，生成摘要到 episodes/ 中，并更新 master_profile.md 和 prompt.json。"
             )
         else:
             char_count = archive_info.get("char_count", 0)
             content = (
-                f"[系统通知] 用户 {user_id} 的 {project_name} 语音通话结束。"
+                f"[系统通知] 用户 {user_id} 的 {project_name} 语音通话结束。\n"
+                f"【项目绝对路径】: {abs_project_path}\n"
+                f"⚠️ 【强制指令】：请立即调用并执行你的『{target_skill}』技能来完成本次任务！\n"
                 f"当前 memory_log.md 累计 {char_count} 字符。"
-                f"请读取最新的 memory_log.md，更新 master_profile.md 和 prompt.json。"
+                f"请立即进入该绝对路径读取 memory_log.md，更新 master_profile.md 和 prompt.json。"
             )
 
         payload = {
@@ -766,7 +776,7 @@ class OpenClawBridge:
             # 使用类内部复用的 http_client 性能更好
             resp = await self.http_client.post(self.gateway_url, headers=headers, json=payload)
             resp.raise_for_status()
-            print(f"[OpenClawBridge] 门铃已按响，异步通知发送成功。状态码: {resp.status_code}")
+            print(f"[OpenClawBridge] 门铃已按响，异步通知发送成功。状态码: {resp.status_code}，触发技能: {target_skill}")
         except httpx.HTTPStatusError as e:
             print(f"[OpenClawBridge] 通知 OpenClaw 失败 (HTTP {e.response.status_code}): {e.response.text}")
         except Exception as e:
