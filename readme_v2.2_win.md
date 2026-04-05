@@ -347,19 +347,101 @@ FastAPI 拿到 `user_id` -> 读取该用户的 `status.json` -> 获悉 `active_p
 
 ## 🚀 Windows 本地测试指南
 
-### 1. 环境依赖
+### 环境要求
+- Python 版本：Python 3.11.14
+- Windows 64 位系统
+- [uv](https://docs.astral.sh/uv/) - 现代化 Python 包管理工具（比 pip 快 10-100 倍）
 
-```bash
-pip install fastapi uvicorn websockets httpx aiofiles python-dotenv
+---
+
+### 1. 安装 uv
+
+**方式一：使用 PowerShell 安装（推荐）**
+
+```powershell
+irm https://astral.sh/uv/install.ps1 | iex
 ```
 
-或使用 requirements.txt：
+**方式二：使用 pip 安装**
 
 ```bash
-pip install -r requirements.txt
+pip install uv
 ```
 
-### 2. 配置环境变量
+**方式三：使用 pipx 安装**
+
+```bash
+pipx install uv
+```
+
+**验证安装成功**
+
+```bash
+uv --version
+```
+
+> 💡 **提示**：uv 是 Astral 公司开发的下一代 Python 包管理工具，采用 Rust 编写，速度极快，支持锁定依赖版本，推荐在生产环境中使用。
+
+---
+
+### 2. 创建虚拟环境
+
+**创建虚拟环境**
+
+```bash
+# 在项目目录下创建 .venv 虚拟环境（默认使用系统 Python）
+uv venv
+
+# 指定 Python 版本创建虚拟环境
+uv venv --python 3.11
+```
+
+**激活虚拟环境**
+
+```powershell
+# PowerShell
+.venv\Scripts\activate
+
+# CMD
+.venv\Scripts\activate.bat
+```
+
+**验证虚拟环境**
+
+```bash
+# 确认使用的是 .venv 中的 Python
+where python
+# 应显示：d:\Python_work\realtime_dialog\phonecall\.venv\Scripts\python.exe
+```
+
+---
+
+### 3. 安装项目依赖
+
+**使用 uv 安装依赖（推荐）**
+
+```bash
+# 安装所有依赖（自动从 PyPI 下载，速度极快）
+uv pip install -r requirements.txt
+```
+
+**查看已安装的依赖**
+
+```bash
+uv pip list
+```
+
+**可选：手动安装单个依赖**
+
+```bash
+uv pip install fastapi uvicorn websockets httpx aiofiles python-dotenv
+```
+
+> ⚠️ **注意**：使用 `uv pip install` 命令时，确保已激活虚拟环境。uv 会自动处理依赖冲突并生成锁定文件。
+
+---
+
+### 4. 配置环境变量
 
 ```bash
 copy .env.example .env
@@ -380,13 +462,13 @@ copy .env.example .env
 | `OPENCLAW_TOKEN` | OpenClaw Gateway Token | `xxx` |
 | `MEMORY_DIR` | 记忆文件存储目录 | `memory` |
 
-### 3. 启动服务
+### 5. 启动服务
 
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
-### 4. 测试验证
+### 6. 测试验证
 
 #### UI 界面测试（推荐）
 ```
