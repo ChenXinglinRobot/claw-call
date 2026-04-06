@@ -95,18 +95,15 @@ async def delayed_session_destroy(session_id: str, grace_period: int = 30):
         manager = active_sessions.pop(session_id)
         await manager.stop_session()
         
-        # 异步执行记忆回写，防止阻塞主循环
-        # 🆕 V2.1: 使用状态快照进行记忆回写
+        # V2.3 架构升级：直接 await 调用，GC 防护已下沉到 CoreBridge 内部
         user_id = session_user_map.get(session_id)
         if user_id and manager.dialog_history:
-            asyncio.create_task(
-                bridge.analyze_and_save_memory(
-                    user_identifier=user_id,
-                    dialog_history=manager.dialog_history,
-                    project_snapshot=manager.project_snapshot
-                )
+            await bridge.save_dialog_and_notify(
+                user_id=user_id,
+                dialog_history=manager.dialog_history,
+                project_snapshot=manager.project_snapshot
             )
-            print(f"[Server] 会话 {session_id} 记忆回写任务已提交，用户: {user_id}, 快照: {manager.project_snapshot}")
+            print(f"[Server] 会话 {session_id} 记忆回写完成，用户: {user_id}, 快照: {manager.project_snapshot}")
         
         # 清理用户映射
         if session_id in session_user_map:
@@ -164,17 +161,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         manager = active_sessions.pop(current_session_id)
                         await manager.stop_session()
                         
-                        # 🆕 V2.1: 使用状态快照进行记忆回写
+                        # V2.3 架构升级：直接 await 调用，GC 防护已下沉到 CoreBridge 内部
                         user_id = session_user_map.get(current_session_id)
                         if user_id and manager.dialog_history:
-                            asyncio.create_task(
-                                bridge.analyze_and_save_memory(
-                                    user_identifier=user_id, 
-                                    dialog_history=manager.dialog_history,
-                                    project_snapshot=manager.project_snapshot
-                                )
+                            await bridge.save_dialog_and_notify(
+                                user_id=user_id, 
+                                dialog_history=manager.dialog_history,
+                                project_snapshot=manager.project_snapshot
                             )
-                            print(f"[Server] 会话 {current_session_id} 记忆回写任务已提交，用户: {user_id}, 快照: {manager.project_snapshot}")
+                            print(f"[Server] 会话 {current_session_id} 记忆回写完成，用户: {user_id}, 快照: {manager.project_snapshot}")
                         
                         if current_session_id in session_user_map:
                             del session_user_map[current_session_id]
@@ -213,12 +208,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     # [新建机制] 真实的身份换取与建联流程
                     try:
                         # 通过飞书免登 code 换取用户身份标识
-                        user_id = await bridge.authenticate_feishu_user(code=token)
+                        user_id = await bridge.authenticate_and_initialize(code=token)
                         # 将 user_id 绑定到当前会话，以便后续记忆回写使用
                         session_user_map[current_session_id] = user_id
                         # 根据用户身份生成豆包会话配置（含历史记忆）
                         # 🆕 V2.1: 返回元组 (config, project_snapshot)
-                        config, project_snapshot = await bridge.generate_doubao_config(user_identifier=user_id)
+                        config, project_snapshot = await bridge.generate_doubao_config(user_id=user_id)
                         print(f"[Server] 会话 {current_session_id} 状态快照: {project_snapshot}")
                     except FeishuAuthException as e:
                         # 鉴权失败，返回错误并关闭连接
@@ -258,18 +253,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         manager = active_sessions.pop(current_session_id)
                         await manager.stop_session()
                         
-                        # 异步执行记忆回写，防止阻塞 WebSocket 主循环
-                        # 🆕 V2.1: 使用状态快照进行记忆回写
+                        # V2.3 架构升级：直接 await 调用，GC 防护已下沉到 CoreBridge 内部
                         user_id = session_user_map.get(current_session_id)
                         if user_id and manager.dialog_history:
-                            asyncio.create_task(
-                                bridge.analyze_and_save_memory(
-                                    user_identifier=user_id,
-                                    dialog_history=manager.dialog_history,
-                                    project_snapshot=manager.project_snapshot
-                                )
+                            await bridge.save_dialog_and_notify(
+                                user_id=user_id,
+                                dialog_history=manager.dialog_history,
+                                project_snapshot=manager.project_snapshot
                             )
-                            print(f"[Server] 会话 {current_session_id} 记忆回写任务已提交，用户: {user_id}, 快照: {manager.project_snapshot}")
+                            print(f"[Server] 会话 {current_session_id} 记忆回写完成，用户: {user_id}, 快照: {manager.project_snapshot}")
                         
                         # 清理用户映射
                         if current_session_id in session_user_map:
