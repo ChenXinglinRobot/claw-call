@@ -141,9 +141,10 @@ async function initFeishuAuth() {
         const config = await configResp.json();
         console.log('[飞书] 配置获取成功, appId:', config.feishu_app_id);
         
-        // 使用 requestAuthCode API（需要 appId 参数）
-        tt.requestAuthCode({
-            appId: config.feishu_app_id,
+        // 使用 requestAccess API（飞书新版免登接口）
+        tt.requestAccess({
+            scopeList: [],  // 空数组表示仅获取用户基本凭证
+            appID: config.feishu_app_id,
             success(res) {
                 AppState.authCode = res.code;
                 console.log('[飞书] 免登成功，code:', res.code);
@@ -295,8 +296,9 @@ async function handleDial() {
         let token = AppState.authCode;
         if (!token) {
             token = await new Promise((resolve, reject) => {
-                tt.requestAuthCode({
-                    appId: config.feishu_app_id,
+                tt.requestAccess({
+                    scopeList: [],  // 空数组表示仅获取用户基本凭证
+                    appID: config.feishu_app_id,
                     success(res) { resolve(res.code); },
                     fail(err) { reject(err); }
                 });
