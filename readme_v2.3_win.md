@@ -1,0 +1,697 @@
+# 小爪语音学习助手 V2.3 (Feishu H5 x Doubao API x OpenClaw)
+
+## 📖 项目简介
+
+本项目是一个基于**飞书网页应用 (Web App)** 构建的多场景语音对话系统。通过构建纯 Python 异步中转基站，项目成功解耦了前端（飞书 H5）与大模型语音引擎（火山引擎豆包 API），实现了极低延迟的端到端实时语音对话。同时，系统集成了 OpenClaw 桥接层，用于接管对话上下文记忆和个性化提示词注入。
+
+> **架构亮点**：采用**控制面与数据面分离**设计，支持多场景动态路由与沙盒隔离，实现前端"皮"与后端"魂"的彻底解耦。V2.3 完成 OpenClaw Bridge 模块化重构，实现单一职责与依赖注入。
+
+> **当前状态**：✅ Windows 本地环境测试全部通过，V2.3 版本架构重构完成。
+
+---
+
+## 🆕 版本更新历程
+
+### V2.3 更新亮点
+
+#### 1. OpenClaw Bridge 模块化重构（核心变化）
+- 原 `openclaw_bridge.py` 单文件重构为 `openclaw_bridge/` 包
+- 采用**门面模式 (Facade Pattern)** 设计，实现单一职责原则
+- 6 个子模块各司其职，通过依赖注入解耦
+- 全局异常中心统一管理 5 类自定义异常
+- HTTP 连接池统一管理，防止资源泄漏
+- 异步文件锁机制，确保并发写入安全
+
+#### 2. 飞书免登 API 升级
+- 从 `tt.requestAuthCode`（已停止维护）升级为 `tt.requestAccess`
+- 每次拨号强制获取新的 authCode，解决重连鉴权失效（400 错误）
+- 前端 `handleDial()` 函数不再复用缓存的 `AppState.authCode`
+
+#### 3. 心跳保活机制
+- **前端**：WebSocket 连接建立后，每 15 秒发送 `{"type": "ping"}`
+- **后端**：`server.py` 拦截 ping 消息，立即回复 `{"type": "pong"}`
+- **设计约束**：ping/pong 仅在前端与 Python 中转层之间，**不透传给豆包 API**
+- 解决问题：防止飞书网关/Nginx 因长时间无数据而切断连接（1006 错误）
+
+#### 4. PCMPlayer 内存管理优化
+- `close()` 方法完善：先调用 `flush()` 停止所有音频源
+- 显式释放 `this.sources = []`，防止内存泄漏
+
+#### 5. 后端代码简化
+- `server.py` 直接 `await bridge.save_dialog_and_notify()`
+- GC 防护机制已下沉到 CoreBridge 内部
+- 使用 `asyncio.Task` 强引用集合防止后台任务被回收
+
+---
+
+### V2.2 更新亮点
+
+#### 1. 全新 UI 界面
+- 采用弥散光球背景，动态呼吸效果，视觉体验升级
+- 状态机驱动的界面切换：idle/connecting/active 三态流转
+- 光球颜色随状态变化：温暖色调（idle）→ 活跃色调（active）
+
+#### 2. 适老化交互设计
+- 超大触控区域，绿色拨号按钮 100px，红色挂断按钮 140px
+- 毛玻璃效果的日志抽屉，底部滑出动画
+- 震动反馈增强操作确认感
+
+#### 3. 欢迎语动画系统
+- 10 条欢迎语循环淡入淡出
+- 每 5 秒自动切换，增强用户陪伴感
+- 支持自定义扩展欢迎语列表
+
+#### 4. 计时器与状态同步
+- 通话计时器实时显示
+- 状态切换自动控制计时器启停
+- 挂断时记录通话时长
+
+#### 5. 文件结构优化
+- 新增 `voice.html` + `voice.js` 替代原 `index.html` + `app.js`
+- 文件重命名提升安全性，防止路径枚举
+
+#### 6. 三层记忆分卷与防溢出架构
+- **弹性水位检测**：挂断时自动检测 `memory_log.md` 字符数，阈值 35000 字符
+- **物理搬运归档**：触发阈值后自动移动到 `raw_archives/raw_vol_xxx.md`
+- **异步 OpenClaw 通知**：Fire-and-Forget 模式通知 OpenClaw 执行记忆结算
+- **目录结构升级**：新增 `raw_archives/`、`episodes/`、`master_profile.md`
+- **存量用户兼容**：老用户登录时自动补全新目录结构
+
+---
+
+### V2.1 更新亮点
+
+#### 1. 状态快照机制
+- 会话创建时锁定 `project_snapshot`，确保记忆回写不因并发修改而错位
+- 解决通话期间切换场景导致的记忆文件交叉污染问题
+
+#### 2. Speaker ID 修复
+- 修复 `interview_project` 使用无效 speaker ID (`zh_male_chunhoudahui_moon_bigtts`) 导致无声音的问题
+- 更新为官方支持的男性音色 `zh_male_yunzhou_jupiter_bigtts`（清爽沉稳的男声）
+
+#### 3. 错误日志拦截增强
+- 新增三层错误拦截机制，精准捕获豆包 API 返回的各类错误
+- 避免控制台刷屏，仅打印真正的错误和异常事件
+
+---
+
+### V2.0 更新亮点
+
+#### 多场景动态路由与沙盒隔离架构
+- 抛弃全局配置文件，采用基于用户的物理沙盒隔离
+- 支持 vocab（英语学习）和 interview（长辈访谈）双场景动态切换
+- 新用户自动初始化沙盒，无需手动配置
+- 场景切换无需重启服务，实时生效
+
+---
+
+## 🏗️ 系统架构
+
+### 核心架构理念
+
+本架构采用**控制面（Control Plane）与数据面（Data Plane）分离**的核心思想：
+
+- **前端（数据面）**：纯净、无状态的语音透传通道。无论应用场景如何变化，H5 前端代码 0 修改，仅负责采集麦克风流、传递飞书免登 Code 并播放音频。
+- **Agent（控制面）**：OpenClaw 拥有最高决策权。通过自然语言交互，OpenClaw 负责在后台修改用户的"状态指示灯（`status.json`）"和"情境提示词（`prompt.json`）"。
+- **后端基站（路由层）**：FastAPI 演变为动态组装工厂，引入"状态快照"机制确保单次通话的逻辑连贯性。
+
+### 架构图
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           飞书 H5 前端 (V2.3)                            │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                  │
+│  │ 麦克风采集   │    │ 降采样 16kHz│    │ WebSocket   │                  │
+│  │ (Web Audio) │ -> │ PCM 16-bit  │ -> │ 发送音频流  │                  │
+│  └─────────────┘    └─────────────┘    └──────┬──────┘                  │
+│                                                │ WSS                     │
+│  ┌─────────────┐    ┌─────────────┐    ┌──────▼──────┐                  │
+│  │ 音频播放    │ <- │ PCM Player  │ <- │ 接收音频流  │                  │
+│  │ (24kHz PCM) │    │ (队列式播放) │    │ (二进制帧)  │                  │
+│  └─────────────┘    └─────────────┘    └─────────────┘                  │
+│                                                                         │
+│  V2.3 新增:                                                              │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                  │
+│  │ tt.request  │    │ 心跳保活    │    │ 强制刷新    │                  │
+│  │ Access API  │    │ (15s ping)  │    │ AuthCode    │                  │
+│  └─────────────┘    └─────────────┘    └─────────────┘                  │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ WebSocket (WSS) + 心跳保活
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Python 中转基站 (FastAPI)                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                      server.py (主入口)                          │    │
+│  │  • WebSocket 路由 (/ws/session)                                  │    │
+│  │  • 会话状态管理 (active_sessions)                                 │    │
+│  │  • 30秒断线重连容灾机制                                           │    │
+│  │  • V2.3: ping/pong 心跳拦截                                       │    │
+│  └───────────────────────────┬─────────────────────────────────────┘    │
+│                              │                                           │
+│  ┌───────────────────┐  ┌────▼────────────┐  ┌───────────────────┐      │
+│  │ session_manager.py│  │ doubao_client.py│  │ openclaw_bridge/  │      │
+│  │ • 事件路由分发     │  │ • 二进制协议封包│  │ (V2.3 模块化重构)  │      │
+│  │ • ASR/Chat 流式   │  │ • 音频流收发    │  │ ├─ core_bridge    │      │
+│  │ • 三层错误拦截     │  │ • 优雅断连      │  │ ├─ sandbox_mgr    │      │
+│  └───────────────────┘  └─────────────────┘  │ ├─ token_manager  │      │
+│                                              │ ├─ feishu_client  │      │
+│                                              │ ├─ openclaw_client│      │
+│                                              │ ├─ memory_manager │      │
+│                                              │ └─ exceptions     │      │
+│                                              └───────────────────┘      │
+│                                                         │                │
+│                         ┌───────────────────────────────┘                │
+│                         ▼                                                │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │                    沙盒隔离区 (memory/) 三层记忆架构               │   │
+│  │  ┌─────────────────────────────────────────────────────────────┐ │   │
+│  │  │ templates/ (静态只读模板库)                                   │ │   │
+│  │  │   ├── vocab_project/                                         │ │   │
+│  │  │   │   ├── prompt.json         (英语学习场景配置)              │ │   │
+│  │  │   │   ├── master_profile.md   (二级记忆 L2 全局大纲)          │ │   │
+│  │  │   │   ├── raw_archives/       (原文冷库)                      │ │   │
+│  │  │   │   └── episodes/           (一级记忆 L1 摘要)              │ │   │
+│  │  │   └── interview_project/                                    │ │   │
+│  │  │       ├── prompt.json         (访谈场景配置)                  │ │   │
+│  │  │       ├── master_profile.md   (二级记忆 L2 全局大纲)          │ │   │
+│  │  │       ├── raw_archives/       (原文冷库)                      │ │   │
+│  │  │       └── episodes/           (一级记忆 L1 摘要)              │ │   │
+│  │  └─────────────────────────────────────────────────────────────┘ │   │
+│  │  ┌─────────────────────────────────────────────────────────────┐ │   │
+│  │  │ users/{user_id}/ (用户独立沙盒)                               │ │   │
+│  │  │   ├── status.json                    (当前激活项目状态灯)     │ │   │
+│  │  │   ├── vocab_project/                                         │ │   │
+│  │  │   │   ├── prompt.json                (词汇专属设定)           │ │   │
+│  │  │   │   ├── memory_log.md              (零级记忆 L0 活跃流)     │ │   │
+│  │  │   │   ├── master_profile.md          (二级记忆 L2)            │ │   │
+│  │  │   │   ├── raw_archives/              (原文冷库)               │ │   │
+│  │  │   │   └── episodes/                  (一级记忆 L1)            │ │   │
+│  │  │   └── interview_project/                                    │ │   │
+│  │  │       ├── prompt.json                (访谈专属设定)           │ │   │
+│  │  │       ├── memory_log.md              (零级记忆 L0 活跃流)     │ │   │
+│  │  │       ├── master_profile.md          (二级记忆 L2)            │ │   │
+│  │  │       ├── raw_archives/              (原文冷库)               │ │   │
+│  │  │       └── episodes/                  (一级记忆 L1)            │ │   │
+│  │  └─────────────────────────────────────────────────────────────┘ │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ WebSocket (WSS)
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     火山引擎豆包实时语音 API                              │
+│  • 实时语音识别 (ASR)                                                    │
+│  • 大语言模型对话 (Chat)                                                 │
+│  • 流式语音合成 (TTS, 24kHz PCM)                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### OpenClaw Bridge 模块化架构 (V2.3 新增)
+
+```
+                         ┌─────────────────┐
+                         │   server.py     │
+                         └────────┬────────┘
+                                  │ 实例化并调用
+                                  ▼
+                         ┌─────────────────┐
+                         │   CoreBridge    │ ← 唯一入口门面
+                         └────────┬────────┘
+                                  │
+        ┌─────────────────────────┼─────────────────────────┐
+        │                         │                         │
+        ▼                         ▼                         ▼
+┌───────────────┐        ┌───────────────┐        ┌───────────────┐
+│ TokenManager  │        │SandboxManager │        │ FeishuClient  │
+│ (Token 缓存)  │        │ (文件锁+原子写)│        │ (飞书API封装) │
+└───────┬───────┘        └───────┬───────┘        └───────────────┘
+        │                        │
+        │                        ▼
+        │               ┌───────────────┐
+        │               │ MemoryManager │
+        │               │ (记忆水位+归档)│
+        │               └───────┬───────┘
+        │                       │
+        ▼                       ▼
+┌───────────────┐        ┌───────────────┐
+│ FeishuClient  │◄───────│OpenClawClient │
+│ (共享 Client) │        │ (结算通知)    │
+└───────────────┘        └───────────────┘
+
+所有 HTTP 请求通过共享的 httpx.AsyncClient 完成（CoreBridge 统一管理）
+```
+
+### 核心数据流
+
+| 方向 | 数据格式 | 说明 |
+|------|---------|------|
+| **上行 (User -> AI)** | 16kHz PCM (16-bit 小端序) | 前端 Web Audio API 采集并降采样，每 20ms 发送一帧 |
+| **下行 (AI -> User)** | 24kHz PCM (16-bit 小端序) | 豆包 TTS 输出，前端队列式流式播放 |
+| **信令控制** | JSON 文本帧 | `start_session`, `mic_status`, `finish_session`, `ping/pong` 等 |
+
+---
+
+## 📁 项目文件结构
+
+```
+phonecall/
+├── server.py                 # FastAPI 主入口，WebSocket 路由，心跳拦截
+├── doubao_client.py          # 豆包 WebSocket 客户端（二进制协议封包）
+├── session_manager.py        # 会话生命周期管理器（三层错误拦截）
+├── protocol.py               # 豆包底层二进制协议常量
+├── .env                      # 环境变量配置（敏感信息）
+├── .env.example              # 环境变量模板
+├── requirements.txt          # Python 依赖列表
+├── openclaw_bridge/          # 🆕 V2.3: 模块化重构后的桥接层
+│   ├── __init__.py           # 模块导出，别名 OpenClawBridge = CoreBridge
+│   ├── core_bridge.py        # 门面调度层（唯一入口）
+│   ├── exceptions.py         # 全局异常中心（5 类自定义异常）
+│   ├── sandbox_manager.py    # 沙盒与文件 I/O 管理器（原子写入+异步锁）
+│   ├── token_manager.py      # Token 生命周期管理器
+│   ├── feishu_client.py      # 飞书官方 API 聚合层
+│   ├── openclaw_client.py    # OpenClaw 网关通信层
+│   ├── memory_manager.py     # 会话记忆与归档策略层
+│   └── 架构重构提案.md        # 重构设计文档
+├── openclaw_bridge重构前版本.py  # 存档：重构前的单文件版本
+├── memory/                   # 系统记忆与沙盒根目录
+│   ├── templates/            # 静态只读区：新用户初始化模板库
+│   │   ├── vocab_project/
+│   │   │   ├── prompt.json   # 英语词汇导师配置
+│   │   │   ├── master_profile.md
+│   │   │   ├── raw_archives/
+│   │   │   └── episodes/
+│   │   └── interview_project/
+│   │       ├── prompt.json   # 访谈助手配置
+│   │       ├── master_profile.md
+│   │       ├── raw_archives/
+│   │       └── episodes/
+│   └── users/                # 动态读写区：飞书用户独立沙盒
+│       └── {user_id}/
+│           ├── status.json   # 核心状态灯 (active_project)
+│           ├── vocab_project/
+│           └── interview_project/
+├── static/
+│   ├── voice.html            # V2.3 全新 UI 主页面
+│   ├── voice.js              # V2.3 核心业务逻辑（含心跳保活）
+│   ├── style.css             # V2.3 样式文件
+│   ├── test_ui.html          # UI 测试页面
+│   ├── test_h5_xl2026.html   # 飞书 H5 前端测试端（旧版存档）
+│   ├── index.html            # 旧版存档
+│   └── app.js                # 旧版存档
+├── docs_by_lark_fangzhou/    # 参考文档目录
+│   └── requestAccess.md      # 🆕 V2.3: 飞书新版免登 API 文档
+├── 之前的readme/              # 历史文档存档
+├── 测试文件/                  # 测试脚本存档
+└── readme_v2.3_win.md        # 本文档
+```
+
+---
+
+## 🔧 核心模块说明
+
+### 后端模块
+
+| 文件 | 核心职责 |
+|------|---------|
+| `server.py` | FastAPI 主入口，挂载静态文件，管理 WebSocket 连接，实现 30 秒断线重连容灾机制，V2.3 新增 ping/pong 心跳拦截 |
+| `doubao_client.py` | 纯异步的豆包 WebSocket 客户端，严格实现火山引擎底层二进制协议（Header + Payload 封包/解包） |
+| `session_manager.py` | 会话生命周期管理，拦截并解析大模型事件（ASR/TTS/Chat），流式文本拼接，三层错误拦截 |
+| `protocol.py` | 豆包二进制协议常量定义（消息类型、序列化方式、压缩方式等） |
+
+### OpenClaw Bridge 子模块 (V2.3 新增)
+
+| 文件 | 核心职责 |
+|------|---------|
+| `core_bridge.py` | 门面调度层，协调子模块完成复杂工作流，管理共享 HTTP 连接池和后台任务强引用 |
+| `exceptions.py` | 全局异常中心，定义 5 类自定义异常：`FeishuAuthException`、`SandboxInitException`、`ConfigLoadException`、`OpenClawNotifyException`、`FileWriteException` |
+| `sandbox_manager.py` | 沙盒与文件 I/O 管理，提供异步文件读写、原子写入、异步文件锁、常量集中管理 |
+| `token_manager.py` | 飞书 Token 生命周期管理，tenant_access_token 缓存与自动刷新，授权码换取用户 Token |
+| `feishu_client.py` | 飞书官方 API 聚合层，免登鉴权接口，消息推送接口（预留扩展） |
+| `openclaw_client.py` | OpenClaw 网关通信层，发送记忆结算通知，维护项目与 Skill 映射 |
+| `memory_manager.py` | 会话记忆与归档策略，格式化对话日志，检测水位触发归档，协调 OpenClaw 通知 |
+
+### 前端模块
+
+| 文件 | 核心职责 |
+|------|---------|
+| `static/voice.html` | V2.3 全新 UI 主页面，弥散光球背景，状态机驱动 |
+| `static/voice.js` | V2.3 核心业务逻辑，飞书 JSSDK 集成（`tt.requestAccess`），麦克风采集、降采样、流式播放、心跳保活 |
+| `static/style.css` | V2.3 样式文件，适老化设计，毛玻璃效果 |
+
+---
+
+## 🔄 核心流转机制
+
+### 1. 静默注册与防呆机制
+当新的飞书 `user_id` 首次连接时，后端侦测到 `/users/{user_id}` 目录不存在，会自动从 `/templates/` 复制全套默认文件为其建立沙盒，并将默认状态指向最安全的备用场景（如 `vocab`）。
+
+### 2. 原子写入防碰撞
+OpenClaw 在切换场景或更新 Prompt 时，必须先将内容写入 `.tmp` 临时文件，校验无误后瞬间重命名为目标文件，防止高并发下 FastAPI 读到残缺的 JSON 导致系统崩溃。
+
+### 3. 内存动态组装
+FastAPI 拿到 `user_id` -> 读取该用户的 `status.json` -> 获悉 `active_project` -> 拼接绝对路径读取对应的 `prompt.json` 和 `memory_log.md` -> 在内存中组合发送给豆包 API。
+
+### 4. 状态快照机制 (V2.1)
+会话创建时锁定 `project_snapshot`，确保记忆回写不因并发修改而错位。即使通话期间状态被外部修改，回写依然精准。
+
+### 5. 三层记忆分卷
+- **L0 零级记忆**：`memory_log.md` 当前活跃的聊天流
+- **L1 一级记忆**：`episodes/` 存放摘要
+- **L2 二级记忆**：`master_profile.md` 全局大纲
+- **冷库**：`raw_archives/` 原文归档（超过 35000 字符自动分卷）
+
+### 6. 心跳保活机制 (V2.3 新增)
+```
+前端 (voice.js)                后端 (server.py)              豆包 API
+     │                              │                           │
+     │──── {"type": "ping"} ────────>│                           │
+     │                              │ (拦截，不透传)              │
+     │<─── {"type": "pong"} ────────│                           │
+     │                              │                           │
+     │  每 15 秒发送一次             │                           │
+     │  防止 1006 闲置断开           │                           │
+```
+
+---
+
+## 🎤 官方支持的 Speaker ID
+
+根据火山引擎豆包官方文档，**O版本/O2.0版本**支持的精品音色：
+
+| 音色 ID | 描述 | 适用场景 |
+|---------|------|----------|
+| `zh_female_vv_jupiter_bigtts` | vv音色，活泼灵动的女声，有很强的分享欲 | 日常对话 |
+| `zh_female_xiaohe_jupiter_bigtts` | xiaohe音色，甜美活泼的女声，台湾口音 | 英语学习 ✅ |
+| `zh_male_yunzhou_jupiter_bigtts` | yunzhou音色，清爽沉稳的男声 | 访谈场景 ✅ |
+| `zh_male_xiaotian_jupiter_bigtts` | xiaotian音色，清爽磁性的男声 | 日常对话 |
+
+> ⚠️ **重要提示**：使用无效的 speaker ID 会导致 TTS 静默失败，用户听不到任何回复。
+
+---
+
+## 🎨 UI 状态机设计
+
+### 状态流转图
+
+```
+页面加载 → 显示欢迎语（后台飞书免登）
+     │
+     ▼
+   [idle] ─────────────────────────────────────────┐
+     │   • 欢迎语循环动画                           │
+     │   • 温暖色调光球浮动                         │
+     │   • 显示绿色拨号按钮                         │
+     │                                              │
+     │ 点击拨号                                     │
+     ▼                                              │
+[connecting] ──────────────────────────────────────│
+     │   • 显示"连接中..."                          │
+     │   • 拨号按钮脉冲动画                         │
+     │   • 连接后端语音模型                         │
+     │   • V2.3: 强制获取新 authCode               │
+     │                                              │
+     │ 连接成功                                     │
+     ▼                                              │
+  [active] ────────────────────────────────────────│
+     │   • 计时器开始计时                           │
+     │   • 活跃色调光球呼吸                         │
+     │   • 显示静音/挂断按钮                        │
+     │   • V2.3: 启动心跳保活定时器                 │
+     │                                              │
+     │ 点击挂断                                     │
+     └──────────────────────────────────────────────┘
+```
+
+### 状态对应的 CSS 选择器
+
+| 状态 | data-state | 光球效果 | 显示元素 |
+|------|------------|----------|----------|
+| idle | `idle` | 温暖色调 + 浮动 | 欢迎语 + 拨号按钮 |
+| connecting | `connecting` | 脉冲动画 | 拨号按钮(半透明) |
+| active | `active` | 活跃色调 + 呼吸 | 计时器 + 静音/挂断 |
+
+---
+
+## 🚨 错误日志拦截机制
+
+### 三层错误拦截
+
+`session_manager.py` 中的 `_route_event` 方法实现了三层错误拦截：
+
+#### 第一层：应用层错误事件（JSON 格式）
+- **event 51**：`ConnectionFailed` - 连接建立失败
+- **event 153**：`SessionFailed` - 会话启动失败
+- **event 599**：`DialogCommonError` - 实时通话错误
+
+#### 第二层：payload 中的 error 字段
+某些错误事件的 payload 包含 `{"error": "具体错误信息"}`。
+
+#### 第三层：二进制协议级错误帧
+当豆包返回二进制错误帧（Message Type = `0b1111`）时触发。
+
+---
+
+## 🚀 Windows 本地测试指南
+
+### 环境要求
+- Python 版本：Python 3.11.14
+- Windows 64 位系统
+- [uv](https://docs.astral.sh/uv/) - 现代化 Python 包管理工具（比 pip 快 10-100 倍）
+
+---
+
+### 1. 安装 uv
+
+**方式一：使用 PowerShell 安装（推荐）**
+
+```powershell
+irm https://astral.sh/uv/install.ps1 | iex
+```
+
+**方式二：使用 pip 安装**
+
+```bash
+pip install uv
+```
+
+**方式三：使用 pipx 安装**
+
+```bash
+pipx install uv
+```
+
+**验证安装成功**
+
+```bash
+uv --version
+```
+
+> 💡 **提示**：uv 是 Astral 公司开发的下一代 Python 包管理工具，采用 Rust 编写，速度极快，支持锁定依赖版本，推荐在生产环境中使用。
+
+---
+
+### 2. 创建虚拟环境
+
+**创建虚拟环境**
+
+```bash
+# 在项目目录下创建 .venv 虚拟环境（默认使用系统 Python）
+uv venv
+
+# 指定 Python 版本创建虚拟环境
+uv venv --python 3.11
+```
+
+**激活虚拟环境**
+
+```powershell
+# PowerShell
+.venv\Scripts\activate
+
+# CMD
+.venv\Scripts\activate.bat
+```
+
+**验证虚拟环境**
+
+```bash
+# 确认使用的是 .venv 中的 Python
+where python
+# 应显示：d:\Python_work\realtime_dialog\phonecall\.venv\Scripts\python.exe
+```
+
+---
+
+### 3. 安装项目依赖
+
+**使用 uv 安装依赖（推荐）**
+
+```bash
+# 安装所有依赖（自动从 PyPI 下载，速度极快）
+uv pip install -r requirements.txt
+```
+
+**查看已安装的依赖**
+
+```bash
+uv pip list
+```
+
+**可选：手动安装单个依赖**
+
+```bash
+uv pip install fastapi uvicorn websockets httpx aiofiles python-dotenv
+```
+
+> ⚠️ **注意**：使用 `uv pip install` 命令时，确保已激活虚拟环境。uv 会自动处理依赖冲突并生成锁定文件。
+
+---
+
+### 4. 配置环境变量
+
+```bash
+copy .env.example .env
+# 编辑 .env 文件，填入真实的 API Key
+```
+
+**`.env` 配置项说明：**
+
+| 变量名 | 说明 | 示例值 |
+|--------|------|--------|
+| `DOUBAO_APP_ID` | 火山引擎应用 ID | `your_app_id` |
+| `DOUBAO_ACCESS_KEY` | 火山引擎 Access Key | `your_access_key` |
+| `DOUBAO_RESOURCE_ID` | 资源 ID | `volc.speech.dialog` |
+| `DOUBAO_APP_KEY` | 应用 Key | `your_app_key` |
+| `DOUBAO_WSS_URL` | 豆包 WebSocket 地址 | `wss://openspeech.bytedance.com/api/v3/realtime/dialogue` |
+| `FEISHU_APP_ID` | 飞书应用 ID | `cli_xxx` |
+| `FEISHU_APP_SECRET` | 飞书应用密钥 | `xxx` |
+| `OPENCLAW_TOKEN` | OpenClaw Gateway Token | `xxx` |
+| `OPENCLAW_GATEWAY_URL` | OpenClaw Gateway URL | `https://xxx` |
+| `OPENCLAW_AGENT_ID` | OpenClaw Agent ID | `main` |
+| `MEMORY_DIR` | 记忆文件存储目录 | `memory` |
+
+### 5. 启动服务
+
+```bash
+uvicorn server:app --host 0.0.0.0 --port 8000
+```
+
+### 6. 测试验证
+
+#### UI 界面测试（推荐）
+```
+http://localhost:8000/app/test_ui.html
+```
+
+#### 全新 UI 体验
+```
+http://localhost:8000/app/voice.html
+```
+
+#### 飞书环境完整测试（使用 Cpolar 内网穿透）
+```bash
+cpolar http 8000
+# 将生成的 HTTPS 域名配置到飞书开放平台的可信域名
+```
+
+---
+
+## ✅ 功能清单
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| 飞书免登鉴权 | ✅ 已完成 | V2.3 升级为 `tt.requestAccess` API，每次拨号强制获取新 code |
+| 实时语音通话 | ✅ 已完成 | 16kHz 上行 / 24kHz 下行，极低延迟 |
+| 麦克风静音/取消静音 | ✅ 已完成 | 硬件级隐私控制 + WebSocket 状态同步 |
+| 断线重连 (30秒宽限期) | ✅ 已完成 | 会话挂起保活，支持无缝恢复 |
+| 多场景沙盒隔离 | ✅ 已完成 | 每个用户独立沙盒，项目间物理隔离 |
+| 动态配置路由 | ✅ 已完成 | 根据 status.json 动态加载 prompt.json |
+| V2.1 状态快照机制 | ✅ 已完成 | 会话创建时锁定项目，确保记忆回写一致 |
+| V2.1 错误日志拦截 | ✅ 已完成 | 三层拦截机制，精准捕获各类错误 |
+| V2.1 Speaker ID 修复 | ✅ 已完成 | interview 项目使用正确的男性音色 |
+| V2.2 全新 UI 界面 | ✅ 已完成 | 弥散光球 + 状态机驱动 + 适老化设计 |
+| V2.2 欢迎语动画 | ✅ 已完成 | 10 条欢迎语循环淡入淡出 |
+| V2.2 计时器功能 | ✅ 已完成 | 通话计时 + 状态同步 |
+| V2.2 震动反馈 | ✅ 已完成 | 飞书 API / 原生 Vibration API |
+| V2.2 三层记忆分卷 | ✅ 已完成 | 弹性水位检测 + 物理归档 + 异步通知 |
+| V2.2 目录结构升级 | ✅ 已完成 | raw_archives/ + episodes/ + master_profile.md |
+| V2.3 OpenClaw Bridge 模块化 | ✅ 已完成 | 6 个子模块 + 门面模式 + 依赖注入 |
+| V2.3 心跳保活机制 | ✅ 已完成 | 15 秒 ping/pong，防止 1006 闲置断开 |
+| V2.3 飞书 API 升级 | ✅ 已完成 | `tt.requestAccess` 替代已废弃的 `tt.requestAuthCode` |
+| V2.3 GC 防护机制 | ✅ 已完成 | asyncio.Task 强引用集合，防止后台任务被回收 |
+
+---
+
+## 📝 更新日志
+
+| 日期 | 版本 | 更新内容 |
+|------|------|---------|
+| 2026-04-09 | v2.3 | OpenClaw Bridge 模块化重构（6 个子模块）；飞书免登 API 升级为 `tt.requestAccess`；心跳保活机制（ping/pong）；PCMPlayer 内存管理优化；GC 防护机制下沉到 CoreBridge |
+| 2026-04-03 | v2.2.1 | 三层记忆分卷与防溢出架构：弹性水位检测(35000字符)、物理搬运归档、异步OpenClaw通知、目录结构升级 |
+| 2026-04-02 | v2.2 | 全新 UI 界面：弥散光球背景、状态机驱动、欢迎语动画、计时器、震动反馈 |
+| 2026-04-02 | v2.1 | 引入状态快照机制；修复 interview speaker ID；新增三层错误日志拦截 |
+| 2026-04-02 | v2.0 | 重构为多场景动态路由与沙盒隔离架构，支持 vocab/interview 双场景 |
+| 2026-04-02 | v1.0 | Windows 本地环境测试全部通过，完成所有核心功能开发 |
+
+---
+
+## 📚 相关文档
+
+### 架构设计文档
+- `openclaw_bridge/架构重构提案.md` - V2.3 模块化重构设计文档
+- `之前的readme/Architecture_V2.md` - 多场景动态路由架构说明
+- `之前的readme/Architecture_V2.1.md` - V2.1 架构修订版
+- `之前的readme/整体后端架构设计规划.md` - 完整后端架构设计规划
+
+### 历史版本 README
+- `之前的readme/Readme.md` - 原 V1.0 README 文档
+- `之前的readme/readme_new_win.md` - V2.0 README 文档
+- `之前的readme/readme_v2.1_win.md` - V2.1 README 文档
+- `readme_v2.2_win.md` - V2.2 README 文档
+
+### 官方文档
+- `docs_by_lark_fangzhou/豆包通话.md` - 豆包实时语音 API 官方文档
+- `docs_by_lark_fangzhou/keepalive.md` - 静音保活配置说明
+- `docs_by_lark_fangzhou/飞书网页应用开发文档.md` - 飞书 H5 开发指南
+- `docs_by_lark_fangzhou/获取授权码.md` - 飞书免登授权流程
+- `docs_by_lark_fangzhou/requestAccess.md` - 🆕 V2.3: 飞书新版免登 API 文档
+
+---
+
+## ⚠️ 已知问题与解决方案
+
+### 问题：interview 项目无声音
+
+**根因**：使用了 AI 幻觉生成的无效 speaker ID `zh_male_chunhoudahui_moon_bigtts`
+
+**解决方案**：V2.1 已修复，使用官方支持的 `zh_male_yunzhou_jupiter_bigtts`
+
+### 问题：错误难以追踪
+
+**根因**：之前未拦截豆包返回的错误事件，控制台无错误日志
+
+**解决方案**：V2.1 新增三层错误拦截机制，精准打印错误信息
+
+### 问题：重连鉴权失效（400 错误）
+
+**根因**：前端复用缓存的 `authCode`，但 code 有效期仅 3 分钟且只能使用一次
+
+**解决方案**：V2.3 已修复，每次拨号强制调用 `tt.requestAccess` 获取新 code
+
+### 问题：WebSocket 闲置断开（1006 错误）
+
+**根因**：飞书网关/Nginx 因长时间无数据传输而切断连接
+
+**解决方案**：V2.3 新增心跳保活机制，每 15 秒发送 ping/pong
+
+---
+
+## ☁️ 上云部署规划 (TODO)
+
+- [ ] Docker 容器化
+- [ ] HTTPS/WSS 证书配置
+- [ ] 飞书可信域名配置
+- [ ] 进程守护与日志规范
+- [ ] 高可用与扩展
+- [ ] Redis 接入（Token 多 Worker 共享）

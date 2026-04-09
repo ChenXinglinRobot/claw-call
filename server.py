@@ -189,6 +189,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 data = json.loads(message["text"])
                 msg_type = data.get("type")
 
+                if msg_type == "ping":
+                    # 心跳保活：立即回复 pong，不透传给豆包
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+                    continue
+                
                 if msg_type == "start_session":
                     current_session_id = data.get("session_id")
                     token = data.get("token")

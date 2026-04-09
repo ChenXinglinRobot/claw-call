@@ -16,6 +16,7 @@ let audioContext = null;          // 音频上下文
 let mediaStream = null;           // 麦克风流
 let processor = null;             // 音频处理器
 let player = null;                // PCM 播放器
+let heartbeatInterval = null;     // 心跳定时器
 
 // ============ 下行播放器 (24kHz 连续播放) ============
 /**
@@ -80,6 +81,8 @@ class PCMPlayer {
      * 关闭播放器
      */
     close() {
+        this.flush();  // 停止所有音频源
+        this.sources = [];  // 释放内存
         this.ctx.close();
     }
 }
@@ -287,24 +290,19 @@ async function handleDial() {
         const configResp = await fetch('/api/config');
         const config = await configResp.json();
         
-        // 3. 拉取飞书免登 Code
+        // 3. 强制获取新的飞书免登 Code（每次拨号都必须重新获取）
         if (typeof tt === 'undefined') {
             throw new Error('不在飞书环境中');
         }
         
-        // 使用已有的 authCode 或重新获取
-        let token = AppState.authCode;
-        if (!token) {
-            token = await new Promise((resolve, reject) => {
-                tt.requestAccess({
-                    scopeList: [],  // 空数组表示仅获取用户基本凭证
-                    appID: config.feishu_app_id,
-                    success(res) { resolve(res.code); },
-                    fail(err) { reject(err); }
-                });
+        const token = await new Promise((resolve, reject) => {
+            tt.requestAccess({
+                scopeList: [],  // 空数组表示仅获取用户基本凭证
+                appID: config.feishu_app_id,
+                success(res) { resolve(res.code); },
+                fail(err) { reject(err); }
             });
-            AppState.authCode = token;
-        }
+        });
         
         // 4. 建立 WebSocket 连接
         connectWebSocket(token);
@@ -346,6 +344,13 @@ function connectWebSocket(token) {
             token: token
         }));
         
+        // 启动心跳保活机制（15秒间隔）
+        heartbeatInterval = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 15000);
+        
         setState('active');
         startRecordingAndSending();
     };
@@ -376,6 +381,11 @@ function connectWebSocket(token) {
     
     ws.onclose = () => {
         addLog('❌ 连接已断开');
+        // 清除心跳定时器
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+        }
         cleanup();
         setState('idle');
     };
@@ -453,6 +463,12 @@ function handleHangup() {
  * 清理资源
  */
 function cleanup() {
+    // 清除心跳定时器
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+    
     // 重置静音状态
     AppState.isMuted = false;
     const muteBtn = document.getElementById('btn-mute');
